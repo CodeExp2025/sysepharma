@@ -1,0 +1,50 @@
+<script setup>
+import AppLayout from '@/Layouts/AppLayout.vue';
+
+defineProps({
+    stats: Object,
+});
+</script>
+
+<template>
+    <AppLayout title="Dashboard">
+        <template #header>
+            <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+                Dashboard
+            </h2>
+        </template>
+
+        <div class="py-12">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+                <div class="bg-white overflow-hidden shadow-xl sm:rounded-lg p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div class="bg-blue-100 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold text-blue-800">Stock Pharmacie</h3>
+                            <p class="text-3xl font-bold text-blue-900">{{ stats.total_stock_pharmacy }}</p>
+                            <span class="text-sm text-blue-600">Unités en stock</span>
+                        </div>
+
+                        <div class="bg-green-100 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold text-green-800">Ventes Aujourd'hui</h3>
+                            <p class="text-3xl font-bold text-green-900">{{ stats.total_sales_today }}</p>
+                            <span class="text-sm text-green-600">Unités vendues</span>
+                        </div>
+                        
+                         <!-- Placeholders for more stats -->
+                        <div class="bg-yellow-100 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold text-yellow-800">Alertes Péremption</h3>
+                            <p class="text-3xl font-bold text-yellow-900">0</p>
+                            <span class="text-sm text-yellow-600">Prochains 30 jours</span>
+                        </div>
+
+                         <div class="bg-purple-100 p-6 rounded-lg">
+                            <h3 class="text-lg font-semibold text-purple-800">Stock Dépôts</h3>
+                            <p class="text-3xl font-bold text-purple-900">0</p>
+                            <span class="text-sm text-purple-600">Global</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </AppLayout>
+</template>
