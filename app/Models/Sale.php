@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\HasRouteUuid;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Sale extends Model
 {
-    use HasFactory;
+    use HasFactory, HasRouteUuid;
 
     protected $fillable = ['transaction_id', 'depot_id', 'drug_unit_id', 'sold_by', 'sold_at', 'price', 'quantity'];
 

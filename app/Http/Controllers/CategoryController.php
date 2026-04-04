@@ -19,8 +19,8 @@ class CategoryController extends Controller
         }
 
         $query = Category::query()
-            ->when($search, fn ($q) => $q->where('name', 'like', "%{$search}%")
-                                         ->orWhere('description', 'like', "%{$search}%"))
+            ->when($search, fn ($q) => $q->whereRaw('name COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"])
+                                         ->orWhereRaw('description COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]))
             ->orderBy($sort, $direction);
 
         return Inertia::render('Categories/Index', [

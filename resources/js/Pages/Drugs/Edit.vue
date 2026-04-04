@@ -34,7 +34,7 @@ const showSuccessMessage = ref(false);
 const showDeleteConfirm = ref(false);
 
 const submit = () => {
-    form.put(route('drugs.update', props.drug.id), {
+    form.put(route('drugs.update', props.drug.uuid), {
         onSuccess: () => {
             showSuccessMessage.value = true;
             setTimeout(() => {
@@ -46,7 +46,7 @@ const submit = () => {
 
 const deleteDrug = () => {
     if (confirm('Êtes-vous sûr de vouloir supprimer ce médicament ?')) {
-        form.delete(route('drugs.destroy', props.drug.id));
+        form.delete(route('drugs.destroy', props.drug.uuid));
     }
 };
 </script>

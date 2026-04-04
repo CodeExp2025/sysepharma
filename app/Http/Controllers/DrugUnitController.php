@@ -115,8 +115,8 @@ class DrugUnitController extends Controller
         // ── Search ──────────────────────────────────────────────────────────
         if ($search) {
             $query->where(function ($q) use ($search) {
-                $q->where('drug_units.barcode', 'like', "%{$search}%")
-                  ->orWhereHas('drug', fn ($dq) => $dq->where('name', 'like', "%{$search}%"));
+                $q->whereRaw('drug_units.barcode COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"])
+                  ->orWhereHas('drug', fn ($dq) => $dq->whereRaw('name COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]));
             });
         }
 
@@ -199,6 +199,7 @@ class DrugUnitController extends Controller
 
                     return [
                         'id'                    => $unit->id,
+                        'uuid'                  => $unit->uuid,
                         'barcode'               => $unit->barcode,
                         'quantite_contenu'      => $unit->quantite_contenu,
                         'quantite_actuelle'     => $unit->quantite_actuelle,
@@ -220,8 +221,9 @@ class DrugUnitController extends Controller
                 'direction'   => $direction,
                 'search'      => $search,
             ],
-            'canViewAll'     => $canViewAll,
-            'currentDepotId' => $user->depot_id,
+            'canViewAll'       => $canViewAll,
+            'currentDepotId'   => $user->depot_id,
+            'currentDepotUuid' => $user->depot?->uuid,
             'stockByDrug'    => $stockByDrug,
             'availableStock' => $availableStock,
             'soldToday'      => $soldToday,

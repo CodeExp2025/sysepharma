@@ -98,7 +98,7 @@ const toggleRole = (roleId) => {
                                 </div>
                                 <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                                     <Link
-                                        :href="route('roles.edit', role.id)"
+                                        :href="route('roles.edit', role.uuid)"
                                         class="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors duration-200"
                                     >
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -106,7 +106,7 @@ const toggleRole = (roleId) => {
                                         </svg>
                                     </Link>
                                     <Link
-                                        :href="route('roles.destroy', role.id)"
+                                        :href="route('roles.destroy', role.uuid)"
                                         method="delete"
                                         as="button"
                                         class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
@@ -245,7 +245,7 @@ const toggleRole = (roleId) => {
                                     <td class="px-6 py-4 text-right">
                                         <div class="flex justify-end gap-2">
                                             <Link
-                                                :href="route('roles.edit', role.id)"
+                                                :href="route('roles.edit', role.uuid)"
                                                 class="inline-flex items-center px-3 py-1.5 bg-purple-50 text-purple-700 text-sm font-medium rounded-lg hover:bg-purple-100 transition-colors duration-150"
                                             >
                                                 <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -254,7 +254,7 @@ const toggleRole = (roleId) => {
                                                 Modifier
                                             </Link>
                                             <Link
-                                                :href="route('roles.destroy', role.id)"
+                                                :href="route('roles.destroy', role.uuid)"
                                                 method="delete"
                                                 as="button"
                                                 class="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 text-sm font-medium rounded-lg hover:bg-red-100 transition-colors duration-150"

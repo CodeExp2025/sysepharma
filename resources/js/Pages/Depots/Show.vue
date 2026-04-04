@@ -16,7 +16,7 @@ const toggling = ref(false);
 const toggleReceipts = async () => {
     toggling.value = true;
     try {
-        await window.axios.post(route('depots.toggle-receipts', props.depot.id));
+        await window.axios.post(route('depots.toggle-receipts', props.depot.uuid));
         router.reload({ only: ['depot'] });
     } catch (e) {
         // silently fail — page will reload on next navigation
@@ -41,7 +41,7 @@ const toggleReceipts = async () => {
                 <div class="flex gap-2">
                     <Link
                         v-if="isAdmin"
-                        :href="route('depots.edit', depot.id)"
+                        :href="route('depots.edit', depot.uuid)"
                         class="px-4 py-2 bg-indigo-600 text-white border border-indigo-700 rounded-lg font-medium text-sm hover:bg-indigo-700 transition-all duration-150"
                     >
                         Modifier

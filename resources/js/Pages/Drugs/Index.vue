@@ -184,7 +184,7 @@ const sortIcon = (column) => {
                                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                         <div class="flex items-center justify-end gap-2">
                                             <Link 
-                                                :href="route('drugs.edit', drug.id)" 
+                                                :href="route('drugs.edit', drug.uuid)" 
                                                 class="inline-flex items-center px-3 py-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 rounded-md transition-colors"
                                             >
                                                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -179,7 +179,7 @@ onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
                                             {{ new Date(req.created_at).toLocaleDateString() }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <Link :href="route('stock-requests.show', req.id)" class="text-indigo-600 hover:text-indigo-900">
+                                            <Link :href="route('stock-requests.show', req.uuid)" class="text-indigo-600 hover:text-indigo-900">
                                                 Voir
                                             </Link>
                                         </td>

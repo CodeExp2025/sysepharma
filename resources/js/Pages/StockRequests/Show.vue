@@ -16,7 +16,7 @@ const form = useForm({
 const updateStatus = (status) => {
     if (confirm('Êtes-vous sûr de vouloir changer le statut de cette demande ?')) {
         form.status = status;
-        form.patch(route('stock-requests.update', props.stockRequest.id), {
+        form.patch(route('stock-requests.update', props.stockRequest.uuid), {
             preserveScroll: true,
         });
     }

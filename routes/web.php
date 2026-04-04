@@ -14,6 +14,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\StockRequestController;
 use App\Http\Controllers\PharmacyController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\SessionLockController;
 use App\Http\Controllers\StatsController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -31,6 +32,11 @@ Route::get('/contact', fn () => inertia('Legal/Contact'))->name('legal.contact')
 Route::get('/a-propos', fn () => inertia('Legal/APropos'))->name('legal.about');
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    // Session lock screen — rate-limited: max 5 attempts/minute
+    Route::post('/session/verify-password', [SessionLockController::class, 'verify'])
+        ->middleware('throttle:5,1')
+        ->name('session.verify-password');
+
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     // Drug Management

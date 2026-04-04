@@ -13,7 +13,7 @@ class PermissionController extends Controller
         $search = $request->query('search');
 
         $query = Permission::query()
-            ->when($search, fn ($q) => $q->where('name', 'like', "%{$search}%"))
+            ->when($search, fn ($q) => $q->whereRaw('name COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]))
             ->orderBy('name');
 
         return Inertia::render('Permissions/Index', [

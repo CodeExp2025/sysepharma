@@ -11,7 +11,7 @@ const form = useForm({
 });
 
 const submit = () => {
-    form.put(route('permissions.update', props.permission.id));
+    form.put(route('permissions.update', props.permission.uuid));
 };
 
 // Common permission patterns for suggestions

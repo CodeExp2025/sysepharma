@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\HasRouteUuid;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class DrugUnit extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, HasRouteUuid;
 
     protected $fillable = ['drug_id', 'price', 'barcode', 'quantite_contenu', 'quantite_actuelle', 'expiration_date', 'status', 'current_location_type', 'current_location_id', 'created_by'];
 

@@ -33,8 +33,8 @@ class UserController extends Controller
         }
 
         if ($search) {
-            $query->where(fn ($q) => $q->where('name', 'like', "%{$search}%")
-                                       ->orWhere('email', 'like', "%{$search}%"));
+            $query->where(fn ($q) => $q->whereRaw('name COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"])
+                                       ->orWhereRaw('email COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]));
         }
 
         $query->orderBy($sort, $direction);

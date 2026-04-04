@@ -30,40 +30,71 @@ class TransferController extends Controller
         $search       = $request->query('search');
         $sort         = $request->query('sort', 'performed_at');
         $direction    = strtolower((string) $request->query('direction', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $fromDate     = $request->query('from_date');
+        $toDate       = $request->query('to_date');
 
         $allowedSorts = ['performed_at', 'status', 'id'];
         if (! in_array($sort, $allowedSorts, true)) {
             $sort = 'performed_at';
         }
 
-        $query = Transfer::with(['depot', 'performer'])
+        $baseQuery = Transfer::with(['depot', 'performer'])
             ->when(! $isSuperAdmin && $user->pharmacy_id, function ($q) use ($user) {
                 $q->whereHas('depot', fn ($dq) => $dq->where('pharmacy_id', $user->pharmacy_id));
             })
             ->when($search, function ($q) use ($search) {
                 $q->where(function ($inner) use ($search) {
-                    $inner->whereHas('depot', fn ($d) => $d->where('name', 'like', "%{$search}%"))
-                          ->orWhereHas('performer', fn ($u) => $u->where('name', 'like', "%{$search}%"))
-                          ->orWhere('status', 'like', "%{$search}%");
+                    $inner->whereHas('depot', fn ($d) => $d->whereRaw('name COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]))
+                          ->orWhereHas('performer', fn ($u) => $u->whereRaw('name COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]))
+                          ->orWhereRaw('status COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]);
                 });
             })
+            ->when($fromDate, fn ($q) => $q->whereDate('performed_at', '>=', $fromDate))
+            ->when($toDate,   fn ($q) => $q->whereDate('performed_at', '<=', $toDate))
             ->orderBy($sort, $direction);
 
+        // Full transfer data for period print (only when both dates are set)
+        $transfersForPrint = null;
+        if ($fromDate && $toDate) {
+            $transfersForPrint = (clone $baseQuery)
+                ->with(['depot', 'performer', 'items.drugUnit.drug'])
+                ->get()
+                ->map(fn (Transfer $t) => [
+                    'id'           => $t->id,
+                    'status'       => $t->status,
+                    'performed_at' => $t->performed_at,
+                    'user'         => $t->performer,
+                    'depot'        => $t->depot,
+                    'items'        => $t->items->map(fn ($item) => [
+                        'quantity' => $item->quantity,
+                        'drug'     => $item->drugUnit?->drug ? [
+                            'name'       => $item->drugUnit->drug->name,
+                            'form_med'   => $item->drugUnit->drug->form_med,
+                            'dosage_med' => $item->drugUnit->drug->dosage_med,
+                        ] : null,
+                        'barcode'  => $item->drugUnit?->barcode,
+                        'price'    => $item->drugUnit?->price,
+                    ])->values(),
+                ]);
+        }
+
         return Inertia::render('Transfers/Index', [
-            'transfers' => $query->paginate(10)->through(function (Transfer $transfer) {
-                return [
-                    'id'          => $transfer->id,
-                    'status'      => $transfer->status,
-                    'created_at'  => $transfer->performed_at,
-                    'user'        => $transfer->performer,
-                    'depot'       => $transfer->depot,
-                    'items_count' => $transfer->items_count,
-                ];
-            }),
+            'transfers' => $baseQuery->paginate(10)->through(fn (Transfer $transfer) => [
+                'id'          => $transfer->id,
+                'uuid'        => $transfer->uuid,
+                'status'      => $transfer->status,
+                'created_at'  => $transfer->performed_at,
+                'user'        => $transfer->performer,
+                'depot'       => $transfer->depot,
+                'items_count' => $transfer->items_count,
+            ]),
+            'transfersForPrint' => $transfersForPrint,
             'filters' => [
                 'search'    => $search,
                 'sort'      => $sort,
                 'direction' => $direction,
+                'from_date' => $fromDate,
+                'to_date'   => $toDate,
             ],
         ]);
     }
@@ -103,6 +134,7 @@ class TransferController extends Controller
         return Inertia::render('Transfers/Show', [
             'transfer' => [
                 'id'         => $transfer->id,
+                'uuid'       => $transfer->uuid,
                 'status'     => $transfer->status,
                 'created_at' => $transfer->performed_at,
                 'user'       => $transfer->performer,
@@ -128,6 +160,7 @@ class TransferController extends Controller
         return Inertia::render('Transfers/Print', [
             'transfer' => [
                 'id'          => $transfer->id,
+                'uuid'        => $transfer->uuid,
                 'status'      => $transfer->status,
                 'performed_at' => $transfer->performed_at,
                 'user'        => $transfer->performer,

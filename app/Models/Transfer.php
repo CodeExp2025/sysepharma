@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\HasRouteUuid;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Transfer extends Model
 {
-    use HasFactory;
+    use HasFactory, HasRouteUuid;
 
     protected $fillable = [
         'from_pharmacy_id',

@@ -25,9 +25,9 @@ class DrugController extends Controller
         }
 
         $query = Drug::with('category')
-            ->when($search, fn ($q) => $q->where('drugs.name', 'like', "%{$search}%")
-                                         ->orWhere('form_med', 'like', "%{$search}%")
-                                         ->orWhere('dosage_med', 'like', "%{$search}%"));
+            ->when($search, fn ($q) => $q->whereRaw('drugs.name COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"])
+                                         ->orWhereRaw('form_med COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"])
+                                         ->orWhereRaw('dosage_med COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]));
 
         if ($sort === 'category_name') {
             $query->leftJoin('categories', 'drugs.category_id', '=', 'categories.id')

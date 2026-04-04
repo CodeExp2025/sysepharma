@@ -255,7 +255,7 @@ const getRoleIcon = (roleName) => {
                                             </template>
                                             <template v-else>
                                                 <Link
-                                                    :href="route('users.edit', user.id)"
+                                                    :href="route('users.edit', user.uuid)"
                                                     class="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-100 transition-colors duration-150"
                                                 >
                                                     <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -265,7 +265,7 @@ const getRoleIcon = (roleName) => {
                                                 </Link>
                                                 <Link
                                                     v-if="isSuperAdmin"
-                                                    :href="route('users.destroy', user.id)"
+                                                    :href="route('users.destroy', user.uuid)"
                                                     method="delete"
                                                     as="button"
                                                     type="button"

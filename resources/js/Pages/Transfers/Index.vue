@@ -1,11 +1,12 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { Link, router, usePage } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { debounce } from 'lodash';
 
 const props = defineProps({
     transfers: Object,
+    transfersForPrint: Array,
     filters: Object,
 });
 
@@ -19,18 +20,27 @@ const canManage = computed(() => isSuperAdmin.value || isPharmacyAdmin.value);
 const search    = ref(props.filters?.search    || '');
 const sort      = ref(props.filters?.sort      || 'performed_at');
 const direction = ref(props.filters?.direction || 'desc');
+const fromDate  = ref(props.filters?.from_date || '');
+const toDate    = ref(props.filters?.to_date   || '');
 
 const applyFilters = () => {
     router.get(route('transfers.index'), {
         search:    search.value || undefined,
         sort:      sort.value,
         direction: direction.value,
+        from_date: fromDate.value || undefined,
+        to_date:   toDate.value   || undefined,
     }, { preserveState: true, replace: true, preserveScroll: true });
 };
 
 const debouncedSearch = debounce(() => applyFilters(), 300);
 watch(search, () => debouncedSearch());
 watch([sort, direction], () => applyFilters());
+watch([fromDate, toDate], () => {
+    if ((!fromDate.value && !toDate.value) || (fromDate.value && toDate.value)) {
+        applyFilters();
+    }
+});
 
 const setSort = (column) => {
     if (sort.value === column) {
@@ -70,17 +80,55 @@ const pendingCount   = computed(() => props.transfers.data.filter(t => t.status 
 const completedCount = computed(() => props.transfers.data.filter(t => t.status === 'completed').length);
 const totalUnits     = computed(() => props.transfers.data.reduce((s, t) => s + (t.items_count || 0), 0));
 
-const cancelTransfer = (id) => {
+const cancelTransfer = (uuid) => {
     if (confirm('Annuler ce transfert ?')) {
-        router.post(route('transfers.cancel', id), {}, { preserveScroll: true });
+        router.post(route('transfers.cancel', uuid), {}, { preserveScroll: true });
     }
 };
 
-const deleteTransfer = (id) => {
+const deleteTransfer = (uuid) => {
     if (confirm('Supprimer définitivement ce transfert ? Cette action est irréversible.')) {
-        router.delete(route('transfers.destroy', id), { preserveScroll: true });
+        router.delete(route('transfers.destroy', uuid), { preserveScroll: true });
     }
 };
+
+// ── Period print ─────────────────────────────────────────────────────────────
+const isPrinting = ref(false);
+
+const canPrint = computed(() => fromDate.value && toDate.value && props.transfersForPrint?.length > 0);
+
+// Group transfers by day for the print report
+const transfersByDay = computed(() => {
+    if (!props.transfersForPrint) return [];
+    const groups = {};
+    for (const t of props.transfersForPrint) {
+        const day = new Date(t.performed_at).toLocaleDateString('fr-FR', {
+            weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+        });
+        if (!groups[day]) groups[day] = [];
+        groups[day].push(t);
+    }
+    return Object.entries(groups).map(([day, items]) => ({ day, items }));
+});
+
+const formatPeriod = computed(() => {
+    if (!fromDate.value || !toDate.value) return '';
+    const f = new Date(fromDate.value).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+    const t = new Date(toDate.value).toLocaleDateString('fr-FR',   { day: '2-digit', month: 'long', year: 'numeric' });
+    return f === t ? f : `${f} au ${t}`;
+});
+
+const printPeriod = () => {
+    isPrinting.value = true;
+    document.body.classList.add('printing-transfers');
+    setTimeout(() => window.print(), 80);
+};
+const onAfterPrint = () => {
+    isPrinting.value = false;
+    document.body.classList.remove('printing-transfers');
+};
+window.addEventListener('afterprint', onAfterPrint);
+onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
 </script>
 
 <template>
@@ -174,20 +222,57 @@ const deleteTransfer = (id) => {
                     </div>
                 </div>
 
-                <!-- Search bar -->
+                <!-- Search + Date range + Print -->
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
-                    <div class="relative max-w-md">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                            </svg>
+                    <div class="flex flex-wrap gap-3 items-end">
+                        <!-- Search -->
+                        <div class="relative flex-1 min-w-48">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                </svg>
+                            </div>
+                            <input v-model="search" type="text" placeholder="Rechercher par dépôt, utilisateur, statut..."
+                                class="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent">
+                            <button v-if="search" @click="search = ''" class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                                <svg class="h-4 w-4 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </button>
                         </div>
-                        <input v-model="search" type="text" placeholder="Rechercher par dépôt, utilisateur, statut..."
-                            class="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent">
-                        <button v-if="search" @click="search = ''" class="absolute inset-y-0 right-0 pr-3 flex items-center">
-                            <svg class="h-4 w-4 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        <!-- Date range -->
+                        <div class="flex items-center gap-2">
+                            <div>
+                                <label class="block text-xs text-gray-500 mb-1">Du</label>
+                                <input v-model="fromDate" type="date"
+                                    class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-500 mb-1">Au</label>
+                                <input v-model="toDate" type="date" :min="fromDate"
+                                    class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent">
+                            </div>
+                            <button v-if="fromDate || toDate" @click="fromDate = ''; toDate = ''"
+                                class="mt-5 p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+                                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <!-- Print button -->
+                        <button
+                            :disabled="!canPrint"
+                            @click="printPeriod"
+                            class="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                            :class="canPrint
+                                ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-sm'
+                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'"
+                            :title="canPrint ? `Imprimer les transferts du ${formatPeriod}` : 'Sélectionnez une période complète pour imprimer'"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
                             </svg>
+                            Imprimer la période
                         </button>
                     </div>
                 </div>
@@ -261,7 +346,7 @@ const deleteTransfer = (id) => {
                                     </td>
                                     <td class="px-6 py-4 text-right">
                                         <div class="flex justify-end gap-2">
-                                            <Link :href="route('transfers.show', transfer.id)"
+                                            <Link :href="route('transfers.show', transfer.uuid)"
                                                 class="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-100 transition-colors">
                                                 <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -270,7 +355,7 @@ const deleteTransfer = (id) => {
                                                 Détails
                                             </Link>
                                             <button v-if="canManage && transfer.status === 'pending'"
-                                                @click="cancelTransfer(transfer.id)"
+                                                @click="cancelTransfer(transfer.uuid)"
                                                 class="inline-flex items-center px-3 py-1.5 bg-yellow-50 text-yellow-700 text-sm font-medium rounded-lg hover:bg-yellow-100 transition-colors">
                                                 <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -278,7 +363,7 @@ const deleteTransfer = (id) => {
                                                 Annuler
                                             </button>
                                             <button v-if="canManage"
-                                                @click="deleteTransfer(transfer.id)"
+                                                @click="deleteTransfer(transfer.uuid)"
                                                 class="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 text-sm font-medium rounded-lg hover:bg-red-100 transition-colors">
                                                 <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -334,5 +419,119 @@ const deleteTransfer = (id) => {
                 </div>
             </div>
         </div>
+        <!-- ── Print Report (visible only on print) ── -->
+        <div v-if="isPrinting" class="print-transfers">
+            <div class="ptr-header">
+                <div>
+                    <h1>RAPPORT DES TRANSFERTS</h1>
+                    <p class="ptr-period">Période : {{ formatPeriod }}</p>
+                </div>
+                <div class="ptr-logo">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                    </svg>
+                    Sys E-Dépôt Pharma
+                </div>
+            </div>
+
+            <div class="ptr-summary">
+                <div class="ptr-card">
+                    <div class="ptr-card-label">Transferts</div>
+                    <div class="ptr-card-value">{{ transfersForPrint?.length ?? 0 }}</div>
+                </div>
+                <div class="ptr-card">
+                    <div class="ptr-card-label">Jours concernés</div>
+                    <div class="ptr-card-value">{{ transfersByDay.length }}</div>
+                </div>
+                <div class="ptr-card">
+                    <div class="ptr-card-label">Unités transférées</div>
+                    <div class="ptr-card-value">{{ transfersForPrint?.reduce((s,t) => s + t.items.reduce((si,i) => si + i.quantity, 0), 0) ?? 0 }}</div>
+                </div>
+            </div>
+
+            <div v-for="group in transfersByDay" :key="group.day" class="ptr-day-group">
+                <h2 class="ptr-day-title">{{ group.day }}</h2>
+                <div v-for="transfer in group.items" :key="transfer.id" class="ptr-transfer">
+                    <div class="ptr-transfer-header">
+                        <span class="ptr-transfer-id">Transfert #{{ transfer.id }}</span>
+                        <span class="ptr-transfer-info">→ {{ transfer.depot?.name ?? 'N/A' }} &nbsp;|&nbsp; {{ transfer.user?.name ?? 'Système' }}</span>
+                        <span class="ptr-transfer-status">{{ getStatusLabel(transfer.status) }}</span>
+                    </div>
+                    <table class="ptr-table">
+                        <thead>
+                            <tr>
+                                <th>Médicament</th>
+                                <th>Forme / Dosage</th>
+                                <th>Code-barres</th>
+                                <th class="right">Qté</th>
+                                <th class="right">Prix unit.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(item, i) in transfer.items" :key="i">
+                                <td>{{ item.drug?.name ?? '—' }}</td>
+                                <td>{{ [item.drug?.form_med, item.drug?.dosage_med].filter(Boolean).join(' ') || '—' }}</td>
+                                <td class="mono">{{ item.barcode ?? '—' }}</td>
+                                <td class="right bold">{{ item.quantity }}</td>
+                                <td class="right">{{ item.price != null ? Number(item.price).toLocaleString('fr-FR') + ' FCFA' : '—' }}</td>
+                            </tr>
+                            <tr class="total-row">
+                                <td colspan="3" class="right bold">Total unités</td>
+                                <td class="right bold">{{ transfer.items.reduce((s,i) => s + i.quantity, 0) }}</td>
+                                <td></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <p class="ptr-footer">Sys E-Dépôt Pharma — Lumière Afrique Group Sarl — Période : {{ formatPeriod }}</p>
+        </div>
     </AppLayout>
 </template>
+
+<style scoped>
+.print-transfers { display: none; }
+.ptr-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #ea580c; padding-bottom:14px; margin-bottom:20px; font-family:'Segoe UI',Arial,sans-serif; }
+.ptr-header h1 { font-size:20px; font-weight:800; color:#9a3412; letter-spacing:.5px; }
+.ptr-period { font-size:12px; color:#6b7280; margin-top:4px; }
+.ptr-logo { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; color:#ea580c; }
+.ptr-logo svg { width:22px; height:22px; }
+.ptr-summary { display:flex; gap:12px; margin-bottom:22px; }
+.ptr-card { flex:1; padding:14px; border-radius:8px; background:#fff7ed; border:1px solid #fed7aa; text-align:center; font-family:'Segoe UI',Arial,sans-serif; }
+.ptr-card-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#374151; margin-bottom:5px; }
+.ptr-card-value { font-size:26px; font-weight:800; color:#c2410c; }
+.ptr-day-group { margin-bottom:24px; }
+.ptr-day-title { font-size:13px; font-weight:700; text-transform:capitalize; color:#9a3412; background:#fff7ed; border-left:4px solid #ea580c; padding:6px 10px; margin-bottom:10px; font-family:'Segoe UI',Arial,sans-serif; }
+.ptr-transfer { margin-bottom:14px; }
+.ptr-transfer-header { display:flex; align-items:center; gap:12px; font-size:11px; font-family:'Segoe UI',Arial,sans-serif; margin-bottom:4px; }
+.ptr-transfer-id { font-weight:700; color:#374151; }
+.ptr-transfer-info { color:#6b7280; flex:1; }
+.ptr-transfer-status { font-size:10px; font-weight:600; padding:2px 8px; border-radius:999px; background:#e5e7eb; color:#374151; }
+.ptr-table { width:100%; border-collapse:collapse; margin-bottom:8px; font-family:'Segoe UI',Arial,sans-serif; font-size:11px; }
+.ptr-table th { background:#c2410c; color:white; padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; }
+.ptr-table td { padding:5px 8px; border-bottom:1px solid #e5e7eb; }
+.ptr-table tbody tr:nth-child(even) td { background:#fafafa; }
+.ptr-table .total-row td { border-top:2px solid #ea580c; background:#fff7ed; font-weight:700; }
+.right { text-align:right; }
+.bold { font-weight:700; }
+.mono { font-family:monospace; font-size:10px; }
+.ptr-footer { text-align:center; font-size:10px; color:#9ca3af; border-top:1px solid #e5e7eb; padding-top:10px; margin-top:16px; font-family:'Segoe UI',Arial,sans-serif; }
+</style>
+
+<style>
+@media print {
+    body.printing-transfers * { visibility: hidden !important; }
+    body.printing-transfers .print-transfers,
+    body.printing-transfers .print-transfers * { visibility: visible !important; }
+    body.printing-transfers .print-transfers {
+        position: fixed !important; top: 0 !important; left: 0 !important;
+        width: 100% !important; background: white !important;
+        display: block !important; padding: 20px !important;
+    }
+    body { background: white; margin: 0; }
+    @page { margin: 1cm; }
+    .ptr-transfer { page-break-inside: avoid; }
+    .ptr-day-group { page-break-inside: avoid; }
+}
+</style>

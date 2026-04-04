@@ -10,6 +10,7 @@ const props = defineProps({
     filters: Object,
     canViewAll: Boolean,
     currentDepotId: [Number, String, null],
+    currentDepotUuid: [String, null],
     stockByDrug: Array,
     availableStock: { type: Array, default: () => [] },
     soldToday: { type: Array, default: () => [] },
@@ -40,7 +41,7 @@ const notifyLowStock = (drugId) => {
     }
 
     router.post(
-        route('depots.low-stock-notify', props.currentDepotId),
+        route('depots.low-stock-notify', props.currentDepotUuid ?? props.currentDepotId),
         { drug_id: drugId },
         {
             preserveScroll: true,
@@ -93,9 +94,9 @@ const setSort = (column) => {
 const isPharmacyAdmin = computed(() => roles.value.includes('pharmacy_admin'));
 const canManage = computed(() => isSuperAdmin.value || isPharmacyAdmin.value);
 
-const confirmDelete = (unitId) => {
+const confirmDelete = (unitUuid) => {
     if (confirm('Êtes-vous sûr de vouloir supprimer cette unité ?')) {
-        router.delete(route('drug-units.destroy', unitId), { preserveScroll: true });
+        router.delete(route('drug-units.destroy', unitUuid), { preserveScroll: true });
     }
 };
 
@@ -489,14 +490,14 @@ const formatDate = (date) => {
                                     </td>
                                     <td v-if="canManage" class="px-6 py-4 text-right">
                                         <div class="flex justify-end gap-2">
-                                            <Link :href="route('drug-units.edit', unit.id)"
+                                            <Link :href="route('drug-units.edit', unit.uuid)"
                                                 class="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors">
                                                 <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                                 </svg>
                                                 Modifier
                                             </Link>
-                                            <button @click="confirmDelete(unit.id)"
+                                            <button @click="confirmDelete(unit.uuid)"
                                                 class="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 text-xs font-medium rounded-lg hover:bg-red-100 transition-colors">
                                                 <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>

@@ -12,7 +12,7 @@ const form = useForm({
 });
 
 const submit = () => {
-    form.put(route('categories.update', props.category.id));
+    form.put(route('categories.update', props.category.uuid));
 };
 </script>
 

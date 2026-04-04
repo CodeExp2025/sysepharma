@@ -21,7 +21,7 @@ const form = useForm({
 
 const submit = () => {
     if (props.isEditing) {
-        form.put(route('depots.update', props.depot.id));
+        form.put(route('depots.update', props.depot.uuid));
     } else {
         form.post(route('depots.store'));
     }

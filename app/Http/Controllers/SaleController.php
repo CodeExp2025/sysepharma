@@ -37,9 +37,9 @@ class SaleController extends Controller
             ->when($user->depot_id, fn ($q) => $q->where('depot_id', $user->depot_id))
             ->when($search, function ($q) use ($search) {
                 $q->where(function ($inner) use ($search) {
-                    $inner->whereHas('drugUnit.drug', fn ($d) => $d->where('name', 'like', "%{$search}%"))
-                          ->orWhereHas('seller', fn ($u) => $u->where('name', 'like', "%{$search}%"))
-                          ->orWhereHas('depot', fn ($d) => $d->where('name', 'like', "%{$search}%"));
+                    $inner->whereHas('drugUnit.drug', fn ($d) => $d->whereRaw('name COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]))
+                          ->orWhereHas('seller', fn ($u) => $u->whereRaw('name COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]))
+                          ->orWhereHas('depot', fn ($d) => $d->whereRaw('name COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]));
                 });
             })
             ->latest();

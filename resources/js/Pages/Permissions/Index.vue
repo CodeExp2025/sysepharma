@@ -163,7 +163,7 @@ const groupedPermissions = computed(() => {
                                     </div>
                                     <div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                                         <Link
-                                            :href="route('permissions.destroy', permission.id)"
+                                            :href="route('permissions.destroy', permission.uuid)"
                                             method="delete"
                                             as="button"
                                             class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
@@ -231,7 +231,7 @@ const groupedPermissions = computed(() => {
                                     </td>
                                     <td class="px-6 py-4 text-right">
                                         <Link
-                                            :href="route('permissions.destroy', permission.id)"
+                                            :href="route('permissions.destroy', permission.uuid)"
                                             method="delete"
                                             as="button"
                                             type="button"

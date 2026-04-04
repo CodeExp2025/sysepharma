@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
+import IdleLockScreen from '@/Components/IdleLockScreen.vue';
 import NavLink from '@/Components/NavLink.vue';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
 import { Head, Link, usePage } from '@inertiajs/vue3';
@@ -569,6 +570,9 @@ onUnmounted(() => {
             </footer>
         </div>
     </div>
+
+    <!-- Idle lock screen — mounts once, listens to all activity events -->
+    <IdleLockScreen :user="user" :timeout-mins="15" />
 </template>
 
 <style scoped>

@@ -28,8 +28,8 @@ class DepotController extends Controller
         }
 
         $query = Depot::with('pharmacy')
-            ->when($search, fn ($q) => $q->where('name', 'like', "%{$search}%")
-                                         ->orWhere('address', 'like', "%{$search}%"))
+            ->when($search, fn ($q) => $q->whereRaw('name COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"])
+                                         ->orWhereRaw('address COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]))
             ->orderBy($sort, $direction);
 
         if (! $isSuperAdmin && $user->pharmacy_id) {

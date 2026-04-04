@@ -15,7 +15,7 @@ const form = useForm({
 });
 
 const submit = () => {
-    form.put(route('roles.update', props.role.id));
+    form.put(route('roles.update', props.role.uuid));
 };
 
 // Group permissions by category (assuming permission names are formatted like "category.action")

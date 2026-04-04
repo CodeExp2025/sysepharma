@@ -128,7 +128,7 @@ const sortIcon = (column) => {
                                 </div>
                                 <div v-if="isAdmin" class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                                     <Link
-                                        :href="route('depots.edit', depot.id)"
+                                        :href="route('depots.edit', depot.uuid)"
                                         class="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors duration-200"
                                     >
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -136,7 +136,7 @@ const sortIcon = (column) => {
                                         </svg>
                                     </Link>
                                     <Link
-                                        :href="route('depots.destroy', depot.id)"
+                                        :href="route('depots.destroy', depot.uuid)"
                                         method="delete"
                                         as="button"
                                         class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
@@ -174,7 +174,7 @@ const sortIcon = (column) => {
                             <!-- Stats toggle (admin only) -->
                             <div v-if="isAdmin" class="flex gap-2 mb-3">
                                 <Link
-                                    :href="route('depots.toggle-stats', depot.id)"
+                                    :href="route('depots.toggle-stats', depot.uuid)"
                                     method="post"
                                     as="button"
                                     class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors"
@@ -190,7 +190,7 @@ const sortIcon = (column) => {
                                     ID: {{ depot.id }}
                                 </span>
                                 <Link
-                                    :href="route('depots.show', depot.id)"
+                                    :href="route('depots.show', depot.uuid)"
                                     class="text-xs font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 group/link"
                                 >
                                     Voir détails
@@ -270,7 +270,7 @@ const sortIcon = (column) => {
                                             <!-- Stats toggle -->
                                             <Link
                                                 v-if="isAdmin"
-                                                :href="route('depots.toggle-stats', depot.id)"
+                                                :href="route('depots.toggle-stats', depot.uuid)"
                                                 method="post"
                                                 as="button"
                                                 class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors duration-150"
@@ -284,7 +284,7 @@ const sortIcon = (column) => {
                                             </Link>
                                             <Link
                                                 v-if="isAdmin"
-                                                :href="route('depots.edit', depot.id)"
+                                                :href="route('depots.edit', depot.uuid)"
                                                 class="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-100 transition-colors duration-150"
                                             >
                                                 <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -294,7 +294,7 @@ const sortIcon = (column) => {
                                             </Link>
                                             <Link
                                                 v-if="isSuperAdmin"
-                                                :href="route('depots.destroy', depot.id)"
+                                                :href="route('depots.destroy', depot.uuid)"
                                                 method="delete"
                                                 as="button"
                                                 class="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 text-sm font-medium rounded-lg hover:bg-red-100 transition-colors duration-150"

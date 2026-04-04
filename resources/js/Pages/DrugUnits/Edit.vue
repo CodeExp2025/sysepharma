@@ -25,7 +25,7 @@ const statusOptions = [
 ];
 
 const submit = () => {
-    form.put(route('drug-units.update', props.drugUnit.id));
+    form.put(route('drug-units.update', props.drugUnit.uuid));
 };
 </script>
 
