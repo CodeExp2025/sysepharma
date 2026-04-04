@@ -1,11 +1,19 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Link } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { Link, router } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
+import { debounce } from 'lodash';
 
 const props = defineProps({
     permissions: Array,
+    filters: Object,
 });
+
+const search = ref(props.filters?.search || '');
+const debouncedSearch = debounce(() => {
+    router.get(route('permissions.index'), { search: search.value || undefined }, { preserveState: true, replace: true, preserveScroll: true });
+}, 300);
+watch(search, () => debouncedSearch());
 
 // Group permissions by category
 const groupedPermissions = computed(() => {
@@ -99,6 +107,19 @@ const groupedPermissions = computed(() => {
                                 </svg>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Search Bar -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                            </svg>
+                        </div>
+                        <input v-model="search" type="text" placeholder="Rechercher une permission..."
+                            class="block w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
                     </div>
                 </div>
 

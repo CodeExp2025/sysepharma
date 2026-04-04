@@ -19,14 +19,30 @@ class DepotController extends Controller
         $user         = $request->user();
         $isSuperAdmin = $user->hasRole('super_admin');
 
-        $query = Depot::with('pharmacy')->latest();
+        $search    = $request->query('search');
+        $sort      = $request->query('sort', 'name');
+        $direction = strtolower((string) $request->query('direction', 'asc')) === 'desc' ? 'desc' : 'asc';
+
+        if (! in_array($sort, ['name', 'address', 'created_at'], true)) {
+            $sort = 'name';
+        }
+
+        $query = Depot::with('pharmacy')
+            ->when($search, fn ($q) => $q->where('name', 'like', "%{$search}%")
+                                         ->orWhere('address', 'like', "%{$search}%"))
+            ->orderBy($sort, $direction);
 
         if (! $isSuperAdmin && $user->pharmacy_id) {
             $query->where('pharmacy_id', $user->pharmacy_id);
         }
 
         return Inertia::render('Depots/Index', [
-            'depots' => $query->paginate(10),
+            'depots'  => $query->paginate(10),
+            'filters' => [
+                'search'    => $search,
+                'sort'      => $sort,
+                'direction' => $direction,
+            ],
         ]);
     }
 

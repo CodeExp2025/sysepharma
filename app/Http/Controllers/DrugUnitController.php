@@ -28,6 +28,41 @@ class DrugUnitController extends Controller
         }
     }
 
+    protected function authorizeManageStock(Request $request): void
+    {
+        $user = $request->user();
+        if (! $user || ! $user->hasAnyRole(['super_admin', 'pharmacy_admin'])) {
+            abort(403);
+        }
+    }
+
+    /**
+     * Generate a unique barcode, auto-suffixing if the base already exists.
+     * ABC123 → ABC123 (if free) | ABC123-002, ABC123-003, … (if taken)
+     */
+    protected function generateUniqueBarcode(string $base): string
+    {
+        $existing = DrugUnit::where('barcode', $base)
+            ->orWhere('barcode', 'like', $base . '-%')
+            ->pluck('barcode')
+            ->toArray();
+
+        if (empty($existing)) {
+            return $base;
+        }
+
+        $maxNum = 0;
+        foreach ($existing as $bc) {
+            if ($bc === $base) {
+                $maxNum = max($maxNum, 1);
+            } elseif (preg_match('/^' . preg_quote($base, '/') . '-(\d+)$/', $bc, $m)) {
+                $maxNum = max($maxNum, (int) $m[1]);
+            }
+        }
+
+        return $base . '-' . str_pad($maxNum + 1, 3, '0', STR_PAD_LEFT);
+    }
+
     public function index(Request $request)
     {
         $user         = $request->user();
@@ -37,11 +72,11 @@ class DrugUnitController extends Controller
         $scope      = $request->query('scope', $canViewAll ? 'all' : null);
         $depotId    = $request->query('depot_id');
         $pharmacyId = $request->query('pharmacy_id');
+        $search     = $request->query('search');
 
         $query = DrugUnit::query()->with('drug.category');
 
         // ── Pharmacy isolation ──────────────────────────────────────────────
-        // Non-super_admin users only see units in their active pharmacy's ecosystem
         if (! $isSuperAdmin && $user->pharmacy_id) {
             $pharmacyDepotIds = Depot::where('pharmacy_id', $user->pharmacy_id)->pluck('id');
 
@@ -55,10 +90,8 @@ class DrugUnitController extends Controller
                 });
             });
         }
-        // ────────────────────────────────────────────────────────────────────
 
         if (! $canViewAll) {
-            // Depot staff: scope to their depot
             if ($user->depot_id) {
                 $query->where('current_location_type', 'depot')
                       ->where('current_location_id', $user->depot_id);
@@ -67,7 +100,6 @@ class DrugUnitController extends Controller
                       ->where('current_location_id', $user->pharmacy_id ?? 1);
             }
         } else {
-            // Pharmacy admin/staff: apply scope filter
             if ($scope === 'depot' && $depotId) {
                 $query->where('current_location_type', 'depot')
                       ->where('current_location_id', (int) $depotId);
@@ -78,6 +110,14 @@ class DrugUnitController extends Controller
                     $query->where('current_location_id', (int) $filterPharmacyId);
                 }
             }
+        }
+
+        // ── Search ──────────────────────────────────────────────────────────
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('drug_units.barcode', 'like', "%{$search}%")
+                  ->orWhereHas('drug', fn ($dq) => $dq->where('name', 'like', "%{$search}%"));
+            });
         }
 
         $sort      = $request->query('sort', 'created_at');
@@ -96,7 +136,6 @@ class DrugUnitController extends Controller
             $query->latest();
         }
 
-        // Depots scoped to user's pharmacy (for filter dropdown)
         $depotQuery = Depot::query();
         if (! $isSuperAdmin && $user->pharmacy_id) {
             $depotQuery->where('pharmacy_id', $user->pharmacy_id);
@@ -104,7 +143,6 @@ class DrugUnitController extends Controller
         $depots     = $depotQuery->select('id', 'name')->orderBy('name')->get();
         $depotNames = $depots->pluck('name', 'id');
 
-        // Depot staff: stock-by-drug summary
         $stockByDrug = [];
         if ($user->depot_id) {
             $stockByDrug = DrugUnit::query()
@@ -124,7 +162,6 @@ class DrugUnitController extends Controller
                 ->get();
         }
 
-        // Daily report data
         $today          = now()->toDateString();
         $reportDepotId  = $user->depot_id;
         $availableStock = DrugUnit::query()
@@ -181,6 +218,7 @@ class DrugUnitController extends Controller
                 'pharmacy_id' => $pharmacyId,
                 'sort'        => $sort,
                 'direction'   => $direction,
+                'search'      => $search,
             ],
             'canViewAll'     => $canViewAll,
             'currentDepotId' => $user->depot_id,
@@ -206,16 +244,66 @@ class DrugUnitController extends Controller
 
         $validated = $request->validate([
             'drug_id'          => 'required|exists:drugs,id',
-            'barcode'          => 'required|string|unique:drug_units,barcode',
+            'barcode'          => 'required|string',
             'expiration_date'  => 'required|date|after:today',
             'price'            => 'required|numeric|min:0',
             'quantite_contenu' => 'required|integer|min:1',
+            'quantity'         => 'nullable|integer|min:1|max:500',
         ]);
 
-        $drug = Drug::findOrFail($validated['drug_id']);
+        $drug  = Drug::findOrFail($validated['drug_id']);
+        $count = (int) ($validated['quantity'] ?? 1);
+        $base  = $validated['barcode'];
 
-        $this->stockService->createDrugUnit($drug, $validated, $request->user());
+        for ($i = 0; $i < $count; $i++) {
+            $validated['barcode'] = $this->generateUniqueBarcode($base);
+            $this->stockService->createDrugUnit($drug, $validated, $request->user());
+        }
 
-        return redirect()->back()->with('success', 'Unité ajoutée avec succès.');
+        $msg = $count > 1 ? "{$count} unités ajoutées avec succès." : 'Unité ajoutée avec succès.';
+
+        return redirect()->back()->with('success', $msg);
+    }
+
+    public function edit(DrugUnit $drugUnit)
+    {
+        $this->authorizeManageStock(request());
+
+        return Inertia::render('DrugUnits/Edit', [
+            'drugUnit' => array_merge($drugUnit->load('drug.category')->toArray(), []),
+            'drugs'    => Drug::orderBy('name')->get(),
+        ]);
+    }
+
+    public function update(Request $request, DrugUnit $drugUnit)
+    {
+        $this->authorizeManageStock($request);
+
+        $validated = $request->validate([
+            'drug_id'          => 'required|exists:drugs,id',
+            'barcode'          => 'required|string',
+            'expiration_date'  => 'required|date',
+            'price'            => 'required|numeric|min:0',
+            'quantite_contenu' => 'required|integer|min:1',
+            'status'           => 'required|in:en_stock,vendue,perimee,retiree',
+        ]);
+
+        // If barcode changed, auto-suffix if already taken by another unit
+        if ($validated['barcode'] !== $drugUnit->barcode) {
+            $validated['barcode'] = $this->generateUniqueBarcode($validated['barcode']);
+        }
+
+        $drugUnit->update($validated);
+
+        return redirect()->route('drug-units.index')->with('success', 'Unité mise à jour avec succès.');
+    }
+
+    public function destroy(DrugUnit $drugUnit)
+    {
+        $this->authorizeManageStock(request());
+
+        $drugUnit->delete();
+
+        return redirect()->back()->with('success', 'Unité supprimée avec succès.');
     }
 }

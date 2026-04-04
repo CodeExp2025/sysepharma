@@ -1,16 +1,40 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Link, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { Link, router, usePage } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
+import { debounce } from 'lodash';
 
-defineProps({
-    users: Object, // Paginated
+const props = defineProps({
+    users: Object,
+    filters: Object,
 });
 
 const page = usePage();
 const roles = computed(() => page.props.auth?.roles ?? []);
 const activePharmacy = computed(() => page.props.auth?.active_pharmacy ?? null);
 const isSuperAdmin = computed(() => roles.value.includes('super_admin'));
+
+const search    = ref(props.filters?.search    || '');
+const sort      = ref(props.filters?.sort      || 'name');
+const direction = ref(props.filters?.direction || 'asc');
+
+const applyFilters = () => {
+    router.get(route('users.index'), {
+        search: search.value || undefined, sort: sort.value, direction: direction.value,
+    }, { preserveState: true, replace: true, preserveScroll: true });
+};
+const debouncedSearch = debounce(() => applyFilters(), 300);
+watch(search, () => debouncedSearch());
+watch([sort, direction], () => applyFilters());
+
+const setSort = (column) => {
+    if (sort.value === column) {
+        direction.value = direction.value === 'asc' ? 'desc' : 'asc';
+    } else {
+        sort.value = column;
+        direction.value = 'asc';
+    }
+};
 
 const getRoleBadgeColor = (roleName) => {
     const colors = {
@@ -137,17 +161,35 @@ const getRoleIcon = (roleName) => {
                     </div>
                 </div>
 
+                <!-- Search bar -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+                    <div class="relative max-w-md">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                            </svg>
+                        </div>
+                        <input v-model="search" type="text" placeholder="Rechercher par nom ou email..."
+                            class="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <button v-if="search" @click="search = ''" class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                            <svg class="h-4 w-4 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Users Table -->
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gradient-to-r from-gray-50 to-gray-100">
                                 <tr>
-                                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                        Utilisateur
+                                    <th @click="setSort('name')" scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:text-blue-700">
+                                        Utilisateur <span v-if="sort === 'name'">{{ direction === 'asc' ? '↑' : '↓' }}</span>
                                     </th>
-                                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                        Email
+                                    <th @click="setSort('email')" scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:text-blue-700">
+                                        Email <span v-if="sort === 'email'">{{ direction === 'asc' ? '↑' : '↓' }}</span>
                                     </th>
                                     <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                                         Rôle(s)

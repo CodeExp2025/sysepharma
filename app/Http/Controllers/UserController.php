@@ -17,6 +17,14 @@ class UserController extends Controller
         $auth         = $request->user();
         $isSuperAdmin = $auth->hasRole('super_admin');
 
+        $search    = $request->query('search');
+        $sort      = $request->query('sort', 'name');
+        $direction = strtolower((string) $request->query('direction', 'asc')) === 'desc' ? 'desc' : 'asc';
+
+        if (! in_array($sort, ['name', 'email', 'created_at'], true)) {
+            $sort = 'name';
+        }
+
         $query = User::with(['roles', 'pharmacy', 'depot']);
 
         // pharmacy_admin sees only users of their pharmacy
@@ -24,8 +32,20 @@ class UserController extends Controller
             $query->where('pharmacy_id', $auth->pharmacy_id);
         }
 
+        if ($search) {
+            $query->where(fn ($q) => $q->where('name', 'like', "%{$search}%")
+                                       ->orWhere('email', 'like', "%{$search}%"));
+        }
+
+        $query->orderBy($sort, $direction);
+
         return Inertia::render('Users/Index', [
-            'users' => $query->paginate(10),
+            'users'   => $query->paginate(10),
+            'filters' => [
+                'search'    => $search,
+                'sort'      => $sort,
+                'direction' => $direction,
+            ],
         ]);
     }
 

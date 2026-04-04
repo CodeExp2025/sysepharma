@@ -8,10 +8,17 @@ use Inertia\Inertia;
 
 class PermissionController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $search = $request->query('search');
+
+        $query = Permission::query()
+            ->when($search, fn ($q) => $q->where('name', 'like', "%{$search}%"))
+            ->orderBy('name');
+
         return Inertia::render('Permissions/Index', [
-            'permissions' => Permission::all(),
+            'permissions' => $query->get(),
+            'filters'     => ['search' => $search],
         ]);
     }
 

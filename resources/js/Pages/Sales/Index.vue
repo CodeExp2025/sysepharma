@@ -1,7 +1,8 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Link, usePage } from '@inertiajs/vue3';
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { Link, router, usePage } from '@inertiajs/vue3';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { debounce } from 'lodash';
 
 const props = defineProps({
     transactions: {
@@ -12,12 +13,19 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    filters: Object,
 });
 
 const page = usePage();
 const activePharmacy = computed(() => page.props.auth?.active_pharmacy ?? null);
 const roles = computed(() => page.props.auth?.roles ?? []);
 const isSuperAdmin = computed(() => roles.value.includes('super_admin'));
+
+const search = ref(props.filters?.search || '');
+const debouncedSearch = debounce(() => {
+    router.get(route('sales.index'), { search: search.value || undefined }, { preserveState: true, replace: true, preserveScroll: true });
+}, 300);
+watch(search, () => debouncedSearch());
 
 // Show financials (Total column, prices) for super_admin, pharmacy_admin, pharmacy_staff — or when depot has stats enabled
 const canSeeFinancials = computed(() =>
@@ -156,6 +164,24 @@ onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
                                 </svg>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Search bar -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+                    <div class="relative max-w-md">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                            </svg>
+                        </div>
+                        <input v-model="search" type="text" placeholder="Rechercher par médicament, vendeur, dépôt..."
+                            class="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <button v-if="search" @click="search = ''" class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                            <svg class="h-4 w-4 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
                     </div>
                 </div>
 

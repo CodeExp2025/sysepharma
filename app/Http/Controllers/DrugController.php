@@ -15,17 +15,37 @@ class DrugController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Drug::with('category');
+        $search    = $request->query('search');
+        $sort      = $request->query('sort', 'name');
+        $direction = strtolower((string) $request->query('direction', 'asc')) === 'desc' ? 'desc' : 'asc';
 
-        if ($request->has('search')) {
-            $query->where('name', 'like', '%' . $request->search . '%');
+        $allowedSorts = ['name', 'prix_med', 'form_med', 'created_at', 'category_name'];
+        if (! in_array($sort, $allowedSorts, true)) {
+            $sort = 'name';
         }
 
-        $drugs = $query->latest()->paginate(10);
+        $query = Drug::with('category')
+            ->when($search, fn ($q) => $q->where('drugs.name', 'like', "%{$search}%")
+                                         ->orWhere('form_med', 'like', "%{$search}%")
+                                         ->orWhere('dosage_med', 'like', "%{$search}%"));
+
+        if ($sort === 'category_name') {
+            $query->leftJoin('categories', 'drugs.category_id', '=', 'categories.id')
+                  ->orderBy('categories.name', $direction)
+                  ->select('drugs.*');
+        } else {
+            $query->orderBy($sort, $direction);
+        }
+
+        $drugs = $query->paginate(10);
 
         return Inertia::render('Drugs/Index', [
-            'drugs' => $drugs,
-            'filters' => $request->only(['search']),
+            'drugs'   => $drugs,
+            'filters' => [
+                'search'    => $search,
+                'sort'      => $sort,
+                'direction' => $direction,
+            ],
         ]);
     }
 
@@ -44,22 +64,48 @@ class DrugController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'category_id' => 'required|exists:categories,id',
-            'name' => 'required|string|max:255',
-            'effet_s_med' => 'nullable|string|max:255',
-            'dosage_med' => 'nullable|string|max:255',
-            'form_med' => 'nullable|string|max:255',
-            'prix_med' => 'required|numeric|min:0',
-            'description' => 'nullable|string',
-        ]);
+        // Build readable attribute names per drug row: "nom du médicament #1", etc.
+        $drugAttributes = [];
+        foreach (array_keys($request->drugs ?? []) as $i) {
+            $n = $i + 1;
+            $drugAttributes["drugs.{$i}.name"]        = "nom du médicament #{$n}";
+            $drugAttributes["drugs.{$i}.prix_med"]    = "prix du médicament #{$n}";
+            $drugAttributes["drugs.{$i}.form_med"]    = "forme pharmaceutique du médicament #{$n}";
+            $drugAttributes["drugs.{$i}.dosage_med"]  = "dosage du médicament #{$n}";
+            $drugAttributes["drugs.{$i}.effet_s_med"] = "effet secondaire du médicament #{$n}";
+        }
 
-        Drug::create([
-            ...$validated,
-            'created_by' => Auth::id(),
-        ]);
+        $request->validate([
+            'category_id'          => 'required|exists:categories,id',
+            'drugs'                => 'required|array|min:1',
+            'drugs.*.name'         => 'required|string|max:255',
+            'drugs.*.effet_s_med'  => 'nullable|string|max:255',
+            'drugs.*.dosage_med'   => 'nullable|string|max:255',
+            'drugs.*.form_med'     => 'nullable|string|max:255',
+            'drugs.*.prix_med'     => 'required|numeric|min:0',
+            'drugs.*.description'  => 'nullable|string',
+        ], [], $drugAttributes);
 
-        return redirect()->route('drugs.index')->with('success', 'Drug created successfully.');
+        $categoryId = $request->category_id;
+        $userId     = Auth::id();
+
+        foreach ($request->drugs as $drug) {
+            Drug::create([
+                'category_id' => $categoryId,
+                'name'        => $drug['name'],
+                'effet_s_med' => $drug['effet_s_med'] ?? null,
+                'dosage_med'  => $drug['dosage_med'] ?? null,
+                'form_med'    => $drug['form_med'] ?? null,
+                'prix_med'    => $drug['prix_med'],
+                'description' => $drug['description'] ?? null,
+                'created_by'  => $userId,
+            ]);
+        }
+
+        $count = count($request->drugs);
+        $msg   = $count > 1 ? "{$count} médicaments ajoutés avec succès." : 'Médicament ajouté avec succès.';
+
+        return redirect()->route('drugs.index')->with('success', $msg);
     }
 
     /**

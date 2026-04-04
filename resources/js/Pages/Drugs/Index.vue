@@ -1,6 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Link, useForm } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import { debounce } from 'lodash';
 
@@ -9,24 +9,36 @@ const props = defineProps({
     filters: Object,
 });
 
-const form = useForm({
-    search: props.filters?.search || '',
-});
+const search = ref(props.filters?.search || '');
+const sort = ref(props.filters?.sort || 'name');
+const direction = ref(props.filters?.direction || 'asc');
 
-// Debounced search for better UX
-const debouncedSearch = debounce(() => {
-    form.get(route('drugs.index'), {
-        preserveState: true,
-        replace: true,
-    });
-}, 300);
+const applyFilters = () => {
+    router.get(route('drugs.index'), {
+        search: search.value || undefined,
+        sort: sort.value,
+        direction: direction.value,
+    }, { preserveState: true, replace: true, preserveScroll: true });
+};
 
-watch(() => form.search, () => {
-    debouncedSearch();
-});
+const debouncedSearch = debounce(applyFilters, 300);
+watch(search, () => debouncedSearch());
 
-const clearSearch = () => {
-    form.search = '';
+const clearSearch = () => { search.value = ''; };
+
+const setSort = (column) => {
+    if (sort.value === column) {
+        direction.value = direction.value === 'asc' ? 'desc' : 'asc';
+    } else {
+        sort.value = column;
+        direction.value = 'asc';
+    }
+    applyFilters();
+};
+
+const sortIcon = (column) => {
+    if (sort.value !== column) return '↕';
+    return direction.value === 'asc' ? '↑' : '↓';
 };
 </script>
 
@@ -83,14 +95,14 @@ const clearSearch = () => {
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                                     </svg>
                                 </div>
-                                <input 
-                                    v-model="form.search" 
-                                    type="text" 
-                                    placeholder="Rechercher par nom, catégorie, forme..." 
+                                <input
+                                    v-model="search"
+                                    type="text"
+                                    placeholder="Rechercher par nom, catégorie, forme..."
                                     class="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                                 >
-                                <button 
-                                    v-if="form.search"
+                                <button
+                                    v-if="search"
                                     @click="clearSearch"
                                     class="absolute inset-y-0 right-0 pr-3 flex items-center"
                                 >
@@ -107,17 +119,17 @@ const clearSearch = () => {
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Nom
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100" @click="setSort('name')">
+                                        Nom <span class="ml-1">{{ sortIcon('name') }}</span>
                                     </th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Catégorie
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100" @click="setSort('category_name')">
+                                        Catégorie <span class="ml-1">{{ sortIcon('category_name') }}</span>
                                     </th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Forme / Dosage
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100" @click="setSort('form_med')">
+                                        Forme / Dosage <span class="ml-1">{{ sortIcon('form_med') }}</span>
                                     </th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Prix
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100" @click="setSort('prix_med')">
+                                        Prix <span class="ml-1">{{ sortIcon('prix_med') }}</span>
                                     </th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Effet secondaire

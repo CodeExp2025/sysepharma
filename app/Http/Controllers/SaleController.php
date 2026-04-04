@@ -27,12 +27,21 @@ class SaleController extends Controller
         $user         = $request->user();
         $isSuperAdmin = $user->hasRole('super_admin');
         $userDepotStat = $user->depot?->show_stats;
+        $search = $request->query('search');
+
         // Fetch all sale line-items matching scope
         $salesQuery = Sale::with(['drugUnit.drug.category', 'seller', 'depot'])
             ->when(! $isSuperAdmin && $user->pharmacy_id, function ($q) use ($user) {
                 $q->whereHas('depot', fn ($dq) => $dq->where('pharmacy_id', $user->pharmacy_id));
             })
             ->when($user->depot_id, fn ($q) => $q->where('depot_id', $user->depot_id))
+            ->when($search, function ($q) use ($search) {
+                $q->where(function ($inner) use ($search) {
+                    $inner->whereHas('drugUnit.drug', fn ($d) => $d->where('name', 'like', "%{$search}%"))
+                          ->orWhereHas('seller', fn ($u) => $u->where('name', 'like', "%{$search}%"))
+                          ->orWhereHas('depot', fn ($d) => $d->where('name', 'like', "%{$search}%"));
+                });
+            })
             ->latest();
 
         // Group into transactions (one receipt = one transaction_id)
@@ -68,8 +77,9 @@ class SaleController extends Controller
         );
 
         return Inertia::render('Sales/Index', [
-            'transactions' => $paged,
+            'transactions'  => $paged,
             'userDepotStat' => $userDepotStat,
+            'filters'       => ['search' => $search],
         ]);
     }
 

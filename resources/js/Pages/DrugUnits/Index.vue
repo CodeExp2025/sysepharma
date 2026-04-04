@@ -2,6 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { debounce } from 'lodash';
 
 const props = defineProps({
     drugUnits: Object,
@@ -57,6 +58,7 @@ const scope = ref(props.filters?.scope || 'all');
 const depotId = ref(props.filters?.depot_id || '');
 const sort = ref(props.filters?.sort || 'created_at');
 const direction = ref(props.filters?.direction || 'desc');
+const search = ref(props.filters?.search || '');
 
 const applyFilters = () => {
     const params = {
@@ -64,6 +66,7 @@ const applyFilters = () => {
         depot_id: scope.value === 'depot' ? depotId.value : undefined,
         sort: sort.value,
         direction: direction.value,
+        search: search.value || undefined,
     };
 
     router.get(route('drug-units.index'), params, {
@@ -73,9 +76,28 @@ const applyFilters = () => {
     });
 };
 
-watch([scope, depotId, sort, direction], () => {
-    applyFilters();
-});
+const debouncedSearch = debounce(() => applyFilters(), 300);
+
+watch([scope, depotId, sort, direction], () => applyFilters());
+watch(search, () => debouncedSearch());
+
+const setSort = (column) => {
+    if (sort.value === column) {
+        direction.value = direction.value === 'asc' ? 'desc' : 'asc';
+    } else {
+        sort.value = column;
+        direction.value = 'asc';
+    }
+};
+
+const isPharmacyAdmin = computed(() => roles.value.includes('pharmacy_admin'));
+const canManage = computed(() => isSuperAdmin.value || isPharmacyAdmin.value);
+
+const confirmDelete = (unitId) => {
+    if (confirm('Êtes-vous sûr de vouloir supprimer cette unité ?')) {
+        router.delete(route('drug-units.destroy', unitId), { preserveScroll: true });
+    }
+};
 
 const totalAvailable = () => props.availableStock.reduce((s, r) => s + (r.quantity ?? 0), 0);
 const totalSold = () => props.soldToday.reduce((s, r) => s + (r.quantity ?? 0), 0);
@@ -186,7 +208,24 @@ const formatDate = (date) => {
                 </div>
 
                 <div v-if="canViewAll" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Recherche</label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                    </svg>
+                                </div>
+                                <input v-model="search" type="text" placeholder="Médicament ou code-barres..."
+                                    class="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                <button v-if="search" @click="search = ''" class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                                    <svg class="h-4 w-4 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
                         <div>
                             <label class="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Emplacement</label>
                             <select
@@ -353,23 +392,26 @@ const formatDate = (date) => {
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gradient-to-r from-gray-50 to-gray-100">
                                 <tr>
-                                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                        Médicament
+                                    <th scope="col" @click="setSort('drug_name')" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:text-blue-700">
+                                        Médicament <span v-if="sort === 'drug_name'">{{ direction === 'asc' ? '↑' : '↓' }}</span>
                                     </th>
-                                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                        Code-barres
+                                    <th scope="col" @click="setSort('barcode')" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:text-blue-700">
+                                        Code-barres <span v-if="sort === 'barcode'">{{ direction === 'asc' ? '↑' : '↓' }}</span>
                                     </th>
-                                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                        Emplacement
+                                    <th scope="col" @click="setSort('location')" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:text-blue-700">
+                                        Emplacement <span v-if="sort === 'location'">{{ direction === 'asc' ? '↑' : '↓' }}</span>
                                     </th>
-                                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                        Expiration
+                                    <th scope="col" @click="setSort('expiration_date')" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:text-blue-700">
+                                        Expiration <span v-if="sort === 'expiration_date'">{{ direction === 'asc' ? '↑' : '↓' }}</span>
                                     </th>
-                                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                        Prix
+                                    <th scope="col" @click="setSort('price')" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:text-blue-700">
+                                        Prix <span v-if="sort === 'price'">{{ direction === 'asc' ? '↑' : '↓' }}</span>
                                     </th>
-                                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                        Statut
+                                    <th scope="col" @click="setSort('status')" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:text-blue-700">
+                                        Statut <span v-if="sort === 'status'">{{ direction === 'asc' ? '↑' : '↓' }}</span>
+                                    </th>
+                                    <th v-if="canManage" scope="col" class="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">
+                                        Actions
                                     </th>
                                 </tr>
                             </thead>
@@ -445,9 +487,27 @@ const formatDate = (date) => {
                                             {{ getStatusLabel(unit.status) }}
                                         </span>
                                     </td>
+                                    <td v-if="canManage" class="px-6 py-4 text-right">
+                                        <div class="flex justify-end gap-2">
+                                            <Link :href="route('drug-units.edit', unit.id)"
+                                                class="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors">
+                                                <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                                </svg>
+                                                Modifier
+                                            </Link>
+                                            <button @click="confirmDelete(unit.id)"
+                                                class="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 text-xs font-medium rounded-lg hover:bg-red-100 transition-colors">
+                                                <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                                </svg>
+                                                Supprimer
+                                            </button>
+                                        </div>
+                                    </td>
                                 </tr>
                                 <tr v-if="drugUnits.data.length === 0">
-                                    <td colspan="6" class="px-6 py-16 text-center">
+                                    <td :colspan="canManage ? 7 : 6" class="px-6 py-16 text-center">
                                         <div class="flex flex-col items-center justify-center">
                                             <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                                                 <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

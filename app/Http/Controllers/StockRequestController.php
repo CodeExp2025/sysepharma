@@ -23,13 +23,41 @@ class StockRequestController extends Controller
         $user         = $request->user();
         $isSuperAdmin = $user->hasRole('super_admin');
 
-        $requests = StockRequest::with(['user', 'depot', 'items.drug'])
+        $search    = $request->query('search');
+        $sort      = $request->query('sort', 'created_at');
+        $direction = strtolower((string) $request->query('direction', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+        $allowedSorts = ['created_at', 'status', 'id', 'user_name', 'depot_name'];
+        if (! in_array($sort, $allowedSorts, true)) {
+            $sort = 'created_at';
+        }
+
+        $query = StockRequest::with(['user', 'depot', 'items.drug'])
             ->when(! $isSuperAdmin && $user->pharmacy_id, function ($q) use ($user) {
                 $q->whereHas('depot', fn ($dq) => $dq->where('pharmacy_id', $user->pharmacy_id));
             })
             ->when($user->depot_id, fn ($q) => $q->where('depot_id', $user->depot_id))
-            ->latest()
-            ->paginate(10);
+            ->when($search, function ($q) use ($search) {
+                $q->where(function ($inner) use ($search) {
+                    $inner->whereHas('user', fn ($u) => $u->where('name', 'like', "%{$search}%"))
+                          ->orWhereHas('depot', fn ($d) => $d->where('name', 'like', "%{$search}%"))
+                          ->orWhere('status', 'like', "%{$search}%");
+                });
+            });
+
+        if ($sort === 'user_name') {
+            $query->join('users', 'stock_requests.user_id', '=', 'users.id')
+                  ->orderBy('users.name', $direction)
+                  ->select('stock_requests.*');
+        } elseif ($sort === 'depot_name') {
+            $query->leftJoin('depots', 'stock_requests.depot_id', '=', 'depots.id')
+                  ->orderBy('depots.name', $direction)
+                  ->select('stock_requests.*');
+        } else {
+            $query->orderBy('stock_requests.' . $sort, $direction);
+        }
+
+        $requests = $query->paginate(10);
 
         // Daily stock report data
         $depotId = $user->depot_id;
@@ -64,6 +92,11 @@ class StockRequestController extends Controller
             'availableStock' => $availableStock,
             'soldToday'      => $soldToday,
             'reportDate'     => now()->locale('fr')->isoFormat('dddd D MMMM YYYY [à] HH:mm'),
+            'filters'        => [
+                'search'    => $search,
+                'sort'      => $sort,
+                'direction' => $direction,
+            ],
         ]);
     }
 

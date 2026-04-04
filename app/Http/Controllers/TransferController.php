@@ -27,25 +27,73 @@ class TransferController extends Controller
     {
         $user         = $request->user();
         $isSuperAdmin = $user->hasRole('super_admin');
+        $search       = $request->query('search');
+        $sort         = $request->query('sort', 'performed_at');
+        $direction    = strtolower((string) $request->query('direction', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+        $allowedSorts = ['performed_at', 'status', 'id'];
+        if (! in_array($sort, $allowedSorts, true)) {
+            $sort = 'performed_at';
+        }
+
+        $query = Transfer::with(['depot', 'performer'])
+            ->when(! $isSuperAdmin && $user->pharmacy_id, function ($q) use ($user) {
+                $q->whereHas('depot', fn ($dq) => $dq->where('pharmacy_id', $user->pharmacy_id));
+            })
+            ->when($search, function ($q) use ($search) {
+                $q->where(function ($inner) use ($search) {
+                    $inner->whereHas('depot', fn ($d) => $d->where('name', 'like', "%{$search}%"))
+                          ->orWhereHas('performer', fn ($u) => $u->where('name', 'like', "%{$search}%"))
+                          ->orWhere('status', 'like', "%{$search}%");
+                });
+            })
+            ->orderBy($sort, $direction);
 
         return Inertia::render('Transfers/Index', [
-            'transfers' => Transfer::with(['depot', 'performer'])
-                ->when(! $isSuperAdmin && $user->pharmacy_id, function ($q) use ($user) {
-                    $q->whereHas('depot', fn ($dq) => $dq->where('pharmacy_id', $user->pharmacy_id));
-                })
-                ->orderByDesc('performed_at')
-                ->paginate(10)
-                ->through(function (Transfer $transfer) {
-                    return [
-                        'id'          => $transfer->id,
-                        'status'      => $transfer->status,
-                        'created_at'  => $transfer->performed_at,
-                        'user'        => $transfer->performer,
-                        'depot'       => $transfer->depot,
-                        'items_count' => $transfer->items_count,
-                    ];
-                }),
+            'transfers' => $query->paginate(10)->through(function (Transfer $transfer) {
+                return [
+                    'id'          => $transfer->id,
+                    'status'      => $transfer->status,
+                    'created_at'  => $transfer->performed_at,
+                    'user'        => $transfer->performer,
+                    'depot'       => $transfer->depot,
+                    'items_count' => $transfer->items_count,
+                ];
+            }),
+            'filters' => [
+                'search'    => $search,
+                'sort'      => $sort,
+                'direction' => $direction,
+            ],
         ]);
+    }
+
+    public function cancel(Transfer $transfer, Request $request)
+    {
+        $user = $request->user();
+        if (! $user->hasAnyRole(['super_admin', 'pharmacy_admin'])) {
+            abort(403);
+        }
+
+        if ($transfer->status !== 'pending') {
+            return redirect()->back()->with('error', 'Seuls les transferts en attente peuvent être annulés.');
+        }
+
+        $transfer->update(['status' => 'cancelled']);
+
+        return redirect()->back()->with('success', 'Transfert annulé avec succès.');
+    }
+
+    public function destroy(Transfer $transfer, Request $request)
+    {
+        $user = $request->user();
+        if (! $user->hasAnyRole(['super_admin', 'pharmacy_admin'])) {
+            abort(403);
+        }
+
+        $transfer->delete();
+
+        return redirect()->route('transfers.index')->with('success', 'Transfert supprimé avec succès.');
     }
 
     public function show(Transfer $transfer)

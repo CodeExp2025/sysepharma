@@ -13,6 +13,7 @@ const form = useForm({
     expiration_date: '',
     price: '',
     quantite_contenu: 1,
+    quantity: 1,
 });
 
 const selectedDrug = ref(null);
@@ -345,6 +346,33 @@ onMounted(() => {
                                                     </svg>
                                                     {{ form.errors.quantite_contenu }}
                                                 </p>
+                                            </div>
+
+                                            <!-- Nombre d'exemplaires (lot) -->
+                                            <div class="md:col-span-2">
+                                                <label class="block text-sm font-medium text-gray-700 mb-2" for="quantity">
+                                                    Nombre d'unités à créer
+                                                    <span class="ml-1 text-xs text-blue-600 font-normal">(même code-barres → suffixe auto)</span>
+                                                </label>
+                                                <div class="flex items-center gap-3">
+                                                    <input
+                                                        v-model.number="form.quantity"
+                                                        id="quantity"
+                                                        type="number"
+                                                        min="1"
+                                                        max="500"
+                                                        class="w-32 px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                    >
+                                                    <span class="text-sm text-gray-500">
+                                                        <template v-if="form.quantity > 1">
+                                                            → <strong>{{ form.quantity }}</strong> unités créées avec suffixe (-001, -002…)
+                                                        </template>
+                                                        <template v-else>
+                                                            → 1 unité créée
+                                                        </template>
+                                                    </span>
+                                                </div>
+                                                <p v-if="form.errors.quantity" class="mt-1 text-sm text-red-600">{{ form.errors.quantity }}</p>
                                             </div>
                                         </div>
                                     </div>

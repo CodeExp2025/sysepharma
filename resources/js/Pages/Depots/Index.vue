@@ -1,10 +1,12 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Link, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { Link, router, usePage } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
+import { debounce } from 'lodash';
 
-defineProps({
+const props = defineProps({
     depots: Object, // Paginated
+    filters: Object,
 });
 
 const page = usePage();
@@ -12,6 +14,36 @@ const roles = computed(() => page.props.auth?.roles ?? []);
 const activePharmacy = computed(() => page.props.auth?.active_pharmacy ?? null);
 const isSuperAdmin = computed(() => roles.value.includes('super_admin'));
 const isAdmin = computed(() => ['super_admin', 'pharmacy_admin'].some((r) => roles.value.includes(r)));
+
+const search = ref(props.filters?.search || '');
+const sort = ref(props.filters?.sort || 'name');
+const direction = ref(props.filters?.direction || 'asc');
+
+const applyFilters = () => {
+    router.get(route('depots.index'), {
+        search: search.value || undefined,
+        sort: sort.value,
+        direction: direction.value,
+    }, { preserveState: true, replace: true, preserveScroll: true });
+};
+
+const debouncedSearch = debounce(applyFilters, 300);
+watch(search, () => debouncedSearch());
+
+const setSort = (column) => {
+    if (sort.value === column) {
+        direction.value = direction.value === 'asc' ? 'desc' : 'asc';
+    } else {
+        sort.value = column;
+        direction.value = 'asc';
+    }
+    applyFilters();
+};
+
+const sortIcon = (column) => {
+    if (sort.value !== column) return '↕';
+    return direction.value === 'asc' ? '↑' : '↓';
+};
 </script>
 
 <template>
@@ -66,6 +98,19 @@ const isAdmin = computed(() => ['super_admin', 'pharmacy_admin'].some((r) => rol
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                             </svg>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Search Bar -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                            </svg>
+                        </div>
+                        <input v-model="search" type="text" placeholder="Rechercher un dépôt par nom ou adresse..."
+                            class="block w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                     </div>
                 </div>
 
@@ -170,11 +215,11 @@ const isAdmin = computed(() => ['super_admin', 'pharmacy_admin'].some((r) => rol
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                        Dépôt
+                                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100" @click="setSort('name')">
+                                        Dépôt <span class="ml-1 text-gray-400">{{ sortIcon('name') }}</span>
                                     </th>
-                                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                        Adresse
+                                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100" @click="setSort('address')">
+                                        Adresse <span class="ml-1 text-gray-400">{{ sortIcon('address') }}</span>
                                     </th>
                                     <th v-if="isSuperAdmin" scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                                         Pharmacie

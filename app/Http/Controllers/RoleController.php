@@ -9,10 +9,17 @@ use Inertia\Inertia;
 
 class RoleController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $search = $request->query('search');
+
+        $query = Role::with('permissions')
+            ->when($search, fn ($q) => $q->where('name', 'like', "%{$search}%"))
+            ->orderBy('name');
+
         return Inertia::render('Roles/Index', [
-            'roles' => Role::with('permissions')->get(),
+            'roles'   => $query->get(),
+            'filters' => ['search' => $search],
         ]);
     }
 

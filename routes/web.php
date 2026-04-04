@@ -45,6 +45,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('drug-units', [DrugUnitController::class, 'index'])->middleware('permission:view_stock')->name('drug-units.index');
     Route::get('drug-units/create', [DrugUnitController::class, 'create'])->middleware('role:super_admin|pharmacy_admin|pharmacy_staff')->name('drug-units.create');
     Route::post('drug-units', [DrugUnitController::class, 'store'])->middleware('role:super_admin|pharmacy_admin|pharmacy_staff')->name('drug-units.store');
+    Route::get('drug-units/{drugUnit}/edit', [DrugUnitController::class, 'edit'])->middleware('role:super_admin|pharmacy_admin')->name('drug-units.edit');
+    Route::put('drug-units/{drugUnit}', [DrugUnitController::class, 'update'])->middleware('role:super_admin|pharmacy_admin')->name('drug-units.update');
+    Route::delete('drug-units/{drugUnit}', [DrugUnitController::class, 'destroy'])->middleware('role:super_admin|pharmacy_admin')->name('drug-units.destroy');
 
     // Transfers
     Route::get('transfers', [TransferController::class, 'index'])->middleware('permission:transfer_stock')->name('transfers.index');
@@ -53,6 +56,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('transfers', [TransferController::class, 'store'])->middleware('permission:transfer_stock')->name('transfers.store');
     Route::get('transfers/{transfer}', [TransferController::class, 'show'])->middleware('permission:transfer_stock')->name('transfers.show');
     Route::get('transfers/{transfer}/print', [TransferController::class, 'print'])->middleware('permission:transfer_stock')->name('transfers.print');
+    Route::post('transfers/{transfer}/cancel', [TransferController::class, 'cancel'])->middleware('role:super_admin|pharmacy_admin')->name('transfers.cancel');
+    Route::delete('transfers/{transfer}', [TransferController::class, 'destroy'])->middleware('role:super_admin|pharmacy_admin')->name('transfers.destroy');
 
     // Sales
     Route::get('sales', [SaleController::class, 'index'])->middleware('permission:sell_unit')->name('sales.index');
@@ -83,6 +88,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('categories', [CategoryController::class, 'index'])->middleware('permission:view_category')->name('categories.index');
     Route::get('categories/create', [CategoryController::class, 'create'])->middleware('permission:create_category')->name('categories.create');
     Route::post('categories', [CategoryController::class, 'store'])->middleware('permission:create_category')->name('categories.store');
+    Route::get('categories/{category}/edit', [CategoryController::class, 'edit'])->middleware('permission:create_category')->name('categories.edit');
+    Route::put('categories/{category}', [CategoryController::class, 'update'])->middleware('permission:create_category')->name('categories.update');
+    Route::delete('categories/{category}', [CategoryController::class, 'destroy'])->middleware('permission:create_category')->name('categories.destroy');
 
     Route::get('depots', [DepotController::class, 'index'])->middleware('permission:create_depot')->name('depots.index');
     Route::get('depots/create', [DepotController::class, 'create'])->middleware('permission:create_depot')->name('depots.create');
