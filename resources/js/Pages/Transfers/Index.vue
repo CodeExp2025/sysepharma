@@ -7,6 +7,7 @@ import { debounce } from 'lodash';
 const props = defineProps({
     transfers: Object,
     transfersForPrint: Array,
+    depots: Array,
     filters: Object,
 });
 
@@ -22,6 +23,7 @@ const sort      = ref(props.filters?.sort      || 'performed_at');
 const direction = ref(props.filters?.direction || 'desc');
 const fromDate  = ref(props.filters?.from_date || '');
 const toDate    = ref(props.filters?.to_date   || '');
+const depotId   = ref(props.filters?.depot_id  || '');
 
 const applyFilters = () => {
     router.get(route('transfers.index'), {
@@ -30,12 +32,13 @@ const applyFilters = () => {
         direction: direction.value,
         from_date: fromDate.value || undefined,
         to_date:   toDate.value   || undefined,
+        depot_id:  depotId.value  || undefined,
     }, { preserveState: true, replace: true, preserveScroll: true });
 };
 
 const debouncedSearch = debounce(() => applyFilters(), 300);
 watch(search, () => debouncedSearch());
-watch([sort, direction], () => applyFilters());
+watch([sort, direction, depotId], () => applyFilters());
 watch([fromDate, toDate], () => {
     if ((!fromDate.value && !toDate.value) || (fromDate.value && toDate.value)) {
         applyFilters();
@@ -61,31 +64,24 @@ const getStatusBadgeColor = (status) => {
 };
 
 const getStatusLabel = (status) => {
-    const labels = {
-        'pending':   'En attente',
-        'completed': 'Complété',
-        'cancelled': 'Annulé',
-    };
+    const labels = { 'pending': 'En attente', 'completed': 'Complété', 'cancelled': 'Annulé' };
     return labels[status] || status;
 };
 
-const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('fr-FR', {
-        day: '2-digit', month: 'short', year: 'numeric',
-        hour: '2-digit', minute: '2-digit'
-    });
-};
+const formatDate = (date) => new Date(date).toLocaleDateString('fr-FR', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+});
 
 const pendingCount   = computed(() => props.transfers.data.filter(t => t.status === 'pending').length);
 const completedCount = computed(() => props.transfers.data.filter(t => t.status === 'completed').length);
-const totalUnits     = computed(() => props.transfers.data.reduce((s, t) => s + (t.items_count || 0), 0));
+const totalBoxes     = computed(() => props.transfers.data.reduce((s, t) => s + (t.boxes || 0), 0));
+const totalQty       = computed(() => props.transfers.data.reduce((s, t) => s + (t.qtyTransferred || 0), 0));
 
 const cancelTransfer = (uuid) => {
     if (confirm('Annuler ce transfert ?')) {
         router.post(route('transfers.cancel', uuid), {}, { preserveScroll: true });
     }
 };
-
 const deleteTransfer = (uuid) => {
     if (confirm('Supprimer définitivement ce transfert ? Cette action est irréversible.')) {
         router.delete(route('transfers.destroy', uuid), { preserveScroll: true });
@@ -93,11 +89,11 @@ const deleteTransfer = (uuid) => {
 };
 
 // ── Period print ─────────────────────────────────────────────────────────────
-const isPrinting = ref(false);
+const isPrinting     = ref(false);
+const printDepotOnly = ref(false); // true = print only filtered depot
 
 const canPrint = computed(() => fromDate.value && toDate.value && props.transfersForPrint?.length > 0);
 
-// Group transfers by day for the print report
 const transfersByDay = computed(() => {
     if (!props.transfersForPrint) return [];
     const groups = {};
@@ -118,6 +114,16 @@ const formatPeriod = computed(() => {
     return f === t ? f : `${f} au ${t}`;
 });
 
+const printDepotLabel = computed(() => {
+    if (!depotId.value) return '';
+    return props.depots?.find(d => String(d.id) === String(depotId.value))?.name || '';
+});
+
+const printTotalProducts = computed(() => props.transfersForPrint?.reduce((s, t) => s + (t.products || 0), 0) ?? 0);
+const printTotalBoxes    = computed(() => props.transfersForPrint?.reduce((s, t) => s + (t.boxes || 0), 0) ?? 0);
+const printTotalQty      = computed(() => props.transfersForPrint?.reduce((s, t) => s + (t.qtyTransferred || 0), 0) ?? 0);
+const printTotalRemaining = computed(() => props.transfersForPrint?.reduce((s, t) => s + (t.qtyRemaining || 0), 0) ?? 0);
+
 const printPeriod = () => {
     isPrinting.value = true;
     document.body.classList.add('printing-transfers');
@@ -136,9 +142,7 @@ onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
         <template #header>
             <div class="flex justify-between items-center">
                 <div>
-                    <h2 class="font-bold text-2xl text-gray-900 leading-tight tracking-tight">
-                        Transferts de Stock
-                    </h2>
+                    <h2 class="font-bold text-2xl text-gray-900 leading-tight tracking-tight">Transferts de Stock</h2>
                     <p class="mt-1 text-sm text-gray-600">
                         <span v-if="activePharmacy && !isSuperAdmin">Transferts de <strong>{{ activePharmacy.name }}</strong></span>
                         <span v-else>Historique et gestion des transferts entre dépôts</span>
@@ -167,62 +171,27 @@ onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
                 </div>
 
                 <!-- Stats Cards -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                     <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-sm font-medium text-blue-700">Total</p>
-                                <p class="text-2xl font-bold text-blue-900 mt-1">{{ transfers.data.length }}</p>
-                            </div>
-                            <div class="w-12 h-12 bg-blue-200 rounded-lg flex items-center justify-center">
-                                <svg class="w-6 h-6 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
-                                </svg>
-                            </div>
-                        </div>
+                        <p class="text-sm font-medium text-blue-700">Total transferts</p>
+                        <p class="text-2xl font-bold text-blue-900 mt-1">{{ transfers.data.length }}</p>
                     </div>
                     <div class="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl p-4 border border-yellow-200">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-sm font-medium text-yellow-700">En attente</p>
-                                <p class="text-2xl font-bold text-yellow-900 mt-1">{{ pendingCount }}</p>
-                            </div>
-                            <div class="w-12 h-12 bg-yellow-200 rounded-lg flex items-center justify-center">
-                                <svg class="w-6 h-6 text-yellow-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
-                            </div>
-                        </div>
+                        <p class="text-sm font-medium text-yellow-700">En attente</p>
+                        <p class="text-2xl font-bold text-yellow-900 mt-1">{{ pendingCount }}</p>
                     </div>
                     <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-sm font-medium text-green-700">Complétés</p>
-                                <p class="text-2xl font-bold text-green-900 mt-1">{{ completedCount }}</p>
-                            </div>
-                            <div class="w-12 h-12 bg-green-200 rounded-lg flex items-center justify-center">
-                                <svg class="w-6 h-6 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                                </svg>
-                            </div>
-                        </div>
+                        <p class="text-sm font-medium text-green-700">Complétés</p>
+                        <p class="text-2xl font-bold text-green-900 mt-1">{{ completedCount }}</p>
                     </div>
                     <div class="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-sm font-medium text-purple-700">Unités</p>
-                                <p class="text-2xl font-bold text-purple-900 mt-1">{{ totalUnits }}</p>
-                            </div>
-                            <div class="w-12 h-12 bg-purple-200 rounded-lg flex items-center justify-center">
-                                <svg class="w-6 h-6 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                                </svg>
-                            </div>
-                        </div>
+                        <p class="text-sm font-medium text-purple-700">Qté transférée (total)</p>
+                        <p class="text-2xl font-bold text-purple-900 mt-1">{{ totalQty.toLocaleString('fr-FR') }}</p>
+                        <p class="text-xs text-purple-600 mt-0.5">{{ totalBoxes }} boîte(s)</p>
                     </div>
                 </div>
 
-                <!-- Search + Date range + Print -->
+                <!-- Filters -->
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
                     <div class="flex flex-wrap gap-3 items-end">
                         <!-- Search -->
@@ -240,17 +209,23 @@ onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
                                 </svg>
                             </button>
                         </div>
+                        <!-- Depot filter -->
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Filtrer par dépôt</label>
+                            <select v-model="depotId" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent">
+                                <option value="">Tous les dépôts</option>
+                                <option v-for="depot in depots" :key="depot.id" :value="depot.id">{{ depot.name }}</option>
+                            </select>
+                        </div>
                         <!-- Date range -->
                         <div class="flex items-center gap-2">
                             <div>
                                 <label class="block text-xs text-gray-500 mb-1">Du</label>
-                                <input v-model="fromDate" type="date"
-                                    class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent">
+                                <input v-model="fromDate" type="date" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent">
                             </div>
                             <div>
                                 <label class="block text-xs text-gray-500 mb-1">Au</label>
-                                <input v-model="toDate" type="date" :min="fromDate"
-                                    class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent">
+                                <input v-model="toDate" type="date" :min="fromDate" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent">
                             </div>
                             <button v-if="fromDate || toDate" @click="fromDate = ''; toDate = ''"
                                 class="mt-5 p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
@@ -260,15 +235,10 @@ onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
                             </button>
                         </div>
                         <!-- Print button -->
-                        <button
-                            :disabled="!canPrint"
-                            @click="printPeriod"
+                        <button :disabled="!canPrint" @click="printPeriod"
                             class="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                            :class="canPrint
-                                ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-sm'
-                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'"
-                            :title="canPrint ? `Imprimer les transferts du ${formatPeriod}` : 'Sélectionnez une période complète pour imprimer'"
-                        >
+                            :class="canPrint ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-sm' : 'bg-gray-100 text-gray-400 cursor-not-allowed'"
+                            :title="canPrint ? `Imprimer les transferts du ${formatPeriod}` : 'Sélectionnez une période complète pour imprimer'">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
                             </svg>
@@ -283,98 +253,100 @@ onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gradient-to-r from-gray-50 to-gray-100">
                                 <tr>
-                                    <th @click="setSort('id')" scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:text-orange-700">
+                                    <th @click="setSort('id')" scope="col" class="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:text-orange-700">
                                         Transfert <span v-if="sort === 'id'">{{ direction === 'asc' ? '↑' : '↓' }}</span>
                                     </th>
-                                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                        Destination
-                                    </th>
-                                    <th scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                        Unités
-                                    </th>
-                                    <th @click="setSort('performed_at')" scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:text-orange-700">
+                                    <th scope="col" class="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Destination</th>
+                                    <th scope="col" class="px-4 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Produits</th>
+                                    <th scope="col" class="px-4 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Boîtes</th>
+                                    <th scope="col" class="px-4 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">Unités/Boîte</th>
+                                    <th scope="col" class="px-4 py-4 text-center text-xs font-bold text-orange-700 uppercase tracking-wider">Qté Transférée</th>
+                                    <th scope="col" class="px-4 py-4 text-center text-xs font-bold text-blue-700 uppercase tracking-wider">Qté Restante</th>
+                                    <th @click="setSort('performed_at')" scope="col" class="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:text-orange-700">
                                         Date <span v-if="sort === 'performed_at'">{{ direction === 'asc' ? '↑' : '↓' }}</span>
                                     </th>
-                                    <th @click="setSort('status')" scope="col" class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:text-orange-700">
+                                    <th @click="setSort('status')" scope="col" class="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer select-none hover:text-orange-700">
                                         Statut <span v-if="sort === 'status'">{{ direction === 'asc' ? '↑' : '↓' }}</span>
                                     </th>
-                                    <th scope="col" class="px-6 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">
-                                        Actions
-                                    </th>
+                                    <th scope="col" class="px-4 py-4 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-100">
-                                <tr v-for="transfer in transfers.data" :key="transfer.id"
-                                    class="hover:bg-gray-50 transition-colors duration-150">
-                                    <td class="px-6 py-4">
+                                <tr v-for="transfer in transfers.data" :key="transfer.id" class="hover:bg-gray-50 transition-colors duration-150">
+                                    <td class="px-4 py-3">
                                         <div class="flex items-center">
-                                            <div class="w-10 h-10 bg-gradient-to-br from-orange-100 to-orange-200 rounded-lg flex items-center justify-center mr-3">
-                                                <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <div class="w-9 h-9 bg-gradient-to-br from-orange-100 to-orange-200 rounded-lg flex items-center justify-center mr-3 flex-shrink-0">
+                                                <svg class="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
                                                 </svg>
                                             </div>
                                             <div>
                                                 <div class="text-sm font-semibold text-gray-900">Transfert #{{ transfer.id }}</div>
-                                                <div class="text-xs text-gray-500 mt-0.5">Par {{ transfer.user?.name || 'Système' }}</div>
+                                                <div class="text-xs text-gray-500">{{ transfer.user?.name || 'Système' }}</div>
                                             </div>
                                         </div>
                                     </td>
-                                    <td class="px-6 py-4">
-                                        <div class="flex items-center text-sm text-gray-700">
-                                            <svg class="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                                            </svg>
-                                            <div>
-                                                <div class="font-medium text-gray-900">{{ transfer.depot?.name || 'N/A' }}</div>
-                                                <div class="text-xs text-gray-500">{{ transfer.depot?.address || '' }}</div>
-                                            </div>
-                                        </div>
+                                    <td class="px-4 py-3">
+                                        <div class="text-sm font-medium text-gray-900">{{ transfer.depot?.name || 'N/A' }}</div>
+                                        <div class="text-xs text-gray-500">{{ transfer.depot?.address || '' }}</div>
                                     </td>
-                                    <td class="px-6 py-4">
-                                        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 ring-1 ring-purple-600/20">
-                                            {{ transfer.items_count || 0 }} unité(s)
+                                    <td class="px-4 py-3 text-center">
+                                        <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-800 text-xs font-bold">
+                                            {{ transfer.products ?? 0 }}
                                         </span>
                                     </td>
-                                    <td class="px-6 py-4">
+                                    <td class="px-4 py-3 text-center">
+                                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 ring-1 ring-purple-600/20">
+                                            {{ transfer.boxes ?? 0 }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center">
+                                        <span class="text-sm font-medium text-gray-700">{{ transfer.unitsPerBox ?? 0 }}</span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center">
+                                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-800 ring-1 ring-orange-600/20">
+                                            {{ (transfer.qtyTransferred ?? 0).toLocaleString('fr-FR') }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center">
+                                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 ring-1 ring-blue-600/20">
+                                            {{ (transfer.qtyRemaining ?? 0).toLocaleString('fr-FR') }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3">
                                         <div class="text-sm text-gray-700">{{ formatDate(transfer.created_at) }}</div>
                                     </td>
-                                    <td class="px-6 py-4">
-                                        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ring-1"
+                                    <td class="px-4 py-3">
+                                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ring-1"
                                             :class="getStatusBadgeColor(transfer.status)">
                                             {{ getStatusLabel(transfer.status) }}
                                         </span>
                                     </td>
-                                    <td class="px-6 py-4 text-right">
-                                        <div class="flex justify-end gap-2">
+                                    <td class="px-4 py-3 text-right">
+                                        <div class="flex justify-end gap-1.5">
                                             <Link :href="route('transfers.show', transfer.uuid)"
-                                                class="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-100 transition-colors">
-                                                <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                class="inline-flex items-center px-2.5 py-1.5 bg-blue-50 text-blue-700 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors">
+                                                <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
                                                 </svg>
                                                 Détails
                                             </Link>
-                                            <button v-if="canManage && transfer.status === 'pending'"
-                                                @click="cancelTransfer(transfer.uuid)"
-                                                class="inline-flex items-center px-3 py-1.5 bg-yellow-50 text-yellow-700 text-sm font-medium rounded-lg hover:bg-yellow-100 transition-colors">
-                                                <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                                                </svg>
+                                            <button v-if="canManage && transfer.status === 'pending'" @click="cancelTransfer(transfer.uuid)"
+                                                class="inline-flex items-center px-2.5 py-1.5 bg-yellow-50 text-yellow-700 text-xs font-medium rounded-lg hover:bg-yellow-100 transition-colors">
                                                 Annuler
                                             </button>
-                                            <button v-if="canManage"
-                                                @click="deleteTransfer(transfer.uuid)"
-                                                class="inline-flex items-center px-3 py-1.5 bg-red-50 text-red-700 text-sm font-medium rounded-lg hover:bg-red-100 transition-colors">
-                                                <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <button v-if="canManage" @click="deleteTransfer(transfer.uuid)"
+                                                class="inline-flex items-center px-2.5 py-1.5 bg-red-50 text-red-700 text-xs font-medium rounded-lg hover:bg-red-100 transition-colors">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                                                 </svg>
-                                                Supprimer
                                             </button>
                                         </div>
                                     </td>
                                 </tr>
                                 <tr v-if="transfers.data.length === 0">
-                                    <td colspan="6" class="px-6 py-16 text-center">
+                                    <td colspan="10" class="px-6 py-16 text-center">
                                         <div class="flex flex-col items-center justify-center">
                                             <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                                                 <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -419,12 +391,14 @@ onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
                 </div>
             </div>
         </div>
+
         <!-- ── Print Report (visible only on print) ── -->
         <div v-if="isPrinting" class="print-transfers">
             <div class="ptr-header">
                 <div>
                     <h1>RAPPORT DES TRANSFERTS</h1>
                     <p class="ptr-period">Période : {{ formatPeriod }}</p>
+                    <p v-if="printDepotLabel" class="ptr-period">Dépôt : {{ printDepotLabel }}</p>
                 </div>
                 <div class="ptr-logo">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -434,18 +408,27 @@ onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
                 </div>
             </div>
 
+            <!-- Summary cards -->
             <div class="ptr-summary">
                 <div class="ptr-card">
                     <div class="ptr-card-label">Transferts</div>
                     <div class="ptr-card-value">{{ transfersForPrint?.length ?? 0 }}</div>
                 </div>
                 <div class="ptr-card">
-                    <div class="ptr-card-label">Jours concernés</div>
-                    <div class="ptr-card-value">{{ transfersByDay.length }}</div>
+                    <div class="ptr-card-label">Produits distincts</div>
+                    <div class="ptr-card-value">{{ printTotalProducts }}</div>
                 </div>
                 <div class="ptr-card">
-                    <div class="ptr-card-label">Unités transférées</div>
-                    <div class="ptr-card-value">{{ transfersForPrint?.reduce((s,t) => s + t.items.reduce((si,i) => si + i.quantity, 0), 0) ?? 0 }}</div>
+                    <div class="ptr-card-label">Boîtes transférées</div>
+                    <div class="ptr-card-value">{{ printTotalBoxes }}</div>
+                </div>
+                <div class="ptr-card">
+                    <div class="ptr-card-label">Qté transférée</div>
+                    <div class="ptr-card-value">{{ printTotalQty.toLocaleString('fr-FR') }}</div>
+                </div>
+                <div class="ptr-card">
+                    <div class="ptr-card-label">Qté restante</div>
+                    <div class="ptr-card-value">{{ printTotalRemaining.toLocaleString('fr-FR') }}</div>
                 </div>
             </div>
 
@@ -457,13 +440,24 @@ onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
                         <span class="ptr-transfer-info">→ {{ transfer.depot?.name ?? 'N/A' }} &nbsp;|&nbsp; {{ transfer.user?.name ?? 'Système' }}</span>
                         <span class="ptr-transfer-status">{{ getStatusLabel(transfer.status) }}</span>
                     </div>
+                    <!-- Stats bar -->
+                    <div class="ptr-stats-bar">
+                        <span><strong>{{ transfer.products }}</strong> produit(s)</span>
+                        <span><strong>{{ transfer.boxes }}</strong> boîte(s)</span>
+                        <span>Unités/boîte : <strong>{{ transfer.unitsPerBox }}</strong></span>
+                        <span class="ptr-stats-transferred">Qté transférée : <strong>{{ (transfer.qtyTransferred ?? 0).toLocaleString('fr-FR') }}</strong></span>
+                        <span class="ptr-stats-remaining">Qté restante : <strong>{{ (transfer.qtyRemaining ?? 0).toLocaleString('fr-FR') }}</strong></span>
+                    </div>
                     <table class="ptr-table">
                         <thead>
                             <tr>
                                 <th>Médicament</th>
                                 <th>Forme / Dosage</th>
                                 <th>Code-barres</th>
-                                <th class="right">Qté</th>
+                                <th class="right">Boîtes</th>
+                                <th class="right">Unités/Boîte</th>
+                                <th class="right">Qté transférée</th>
+                                <th class="right">Qté restante</th>
                                 <th class="right">Prix unit.</th>
                             </tr>
                         </thead>
@@ -472,12 +466,18 @@ onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
                                 <td>{{ item.drug?.name ?? '—' }}</td>
                                 <td>{{ [item.drug?.form_med, item.drug?.dosage_med].filter(Boolean).join(' ') || '—' }}</td>
                                 <td class="mono">{{ item.barcode ?? '—' }}</td>
-                                <td class="right bold">{{ item.quantity }}</td>
+                                <td class="right">{{ item.quantity }}</td>
+                                <td class="right">{{ item.quantite_contenu ?? '—' }}</td>
+                                <td class="right bold">{{ ((item.quantite_contenu ?? 0) * (item.quantity ?? 1)).toLocaleString('fr-FR') }}</td>
+                                <td class="right">{{ (item.quantite_actuelle ?? 0).toLocaleString('fr-FR') }}</td>
                                 <td class="right">{{ item.price != null ? Number(item.price).toLocaleString('fr-FR') + ' FCFA' : '—' }}</td>
                             </tr>
                             <tr class="total-row">
-                                <td colspan="3" class="right bold">Total unités</td>
-                                <td class="right bold">{{ transfer.items.reduce((s,i) => s + i.quantity, 0) }}</td>
+                                <td colspan="3" class="right bold">Totaux</td>
+                                <td class="right bold">{{ transfer.boxes }}</td>
+                                <td class="right bold">{{ transfer.unitsPerBox }}</td>
+                                <td class="right bold">{{ (transfer.qtyTransferred ?? 0).toLocaleString('fr-FR') }}</td>
+                                <td class="right bold">{{ (transfer.qtyRemaining ?? 0).toLocaleString('fr-FR') }}</td>
                                 <td></td>
                             </tr>
                         </tbody>
@@ -497,20 +497,23 @@ onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
 .ptr-period { font-size:12px; color:#6b7280; margin-top:4px; }
 .ptr-logo { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; color:#ea580c; }
 .ptr-logo svg { width:22px; height:22px; }
-.ptr-summary { display:flex; gap:12px; margin-bottom:22px; }
-.ptr-card { flex:1; padding:14px; border-radius:8px; background:#fff7ed; border:1px solid #fed7aa; text-align:center; font-family:'Segoe UI',Arial,sans-serif; }
-.ptr-card-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#374151; margin-bottom:5px; }
-.ptr-card-value { font-size:26px; font-weight:800; color:#c2410c; }
+.ptr-summary { display:flex; gap:10px; margin-bottom:22px; flex-wrap:wrap; }
+.ptr-card { flex:1; min-width:80px; padding:12px; border-radius:8px; background:#fff7ed; border:1px solid #fed7aa; text-align:center; font-family:'Segoe UI',Arial,sans-serif; }
+.ptr-card-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#374151; margin-bottom:4px; }
+.ptr-card-value { font-size:22px; font-weight:800; color:#c2410c; }
 .ptr-day-group { margin-bottom:24px; }
 .ptr-day-title { font-size:13px; font-weight:700; text-transform:capitalize; color:#9a3412; background:#fff7ed; border-left:4px solid #ea580c; padding:6px 10px; margin-bottom:10px; font-family:'Segoe UI',Arial,sans-serif; }
-.ptr-transfer { margin-bottom:14px; }
+.ptr-transfer { margin-bottom:16px; }
 .ptr-transfer-header { display:flex; align-items:center; gap:12px; font-size:11px; font-family:'Segoe UI',Arial,sans-serif; margin-bottom:4px; }
 .ptr-transfer-id { font-weight:700; color:#374151; }
 .ptr-transfer-info { color:#6b7280; flex:1; }
 .ptr-transfer-status { font-size:10px; font-weight:600; padding:2px 8px; border-radius:999px; background:#e5e7eb; color:#374151; }
-.ptr-table { width:100%; border-collapse:collapse; margin-bottom:8px; font-family:'Segoe UI',Arial,sans-serif; font-size:11px; }
-.ptr-table th { background:#c2410c; color:white; padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; }
-.ptr-table td { padding:5px 8px; border-bottom:1px solid #e5e7eb; }
+.ptr-stats-bar { display:flex; gap:16px; font-size:11px; font-family:'Segoe UI',Arial,sans-serif; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:6px 10px; margin-bottom:6px; flex-wrap:wrap; }
+.ptr-stats-transferred { color:#c2410c; }
+.ptr-stats-remaining { color:#1d4ed8; }
+.ptr-table { width:100%; border-collapse:collapse; margin-bottom:6px; font-family:'Segoe UI',Arial,sans-serif; font-size:10.5px; }
+.ptr-table th { background:#c2410c; color:white; padding:5px 7px; text-align:left; font-size:9.5px; text-transform:uppercase; }
+.ptr-table td { padding:4px 7px; border-bottom:1px solid #e5e7eb; }
 .ptr-table tbody tr:nth-child(even) td { background:#fafafa; }
 .ptr-table .total-row td { border-top:2px solid #ea580c; background:#fff7ed; font-weight:700; }
 .right { text-align:right; }

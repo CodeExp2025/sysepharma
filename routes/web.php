@@ -16,6 +16,7 @@ use App\Http\Controllers\PharmacyController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SessionLockController;
 use App\Http\Controllers\StatsController;
+use App\Http\Controllers\DisbursementController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -129,6 +130,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Statistics
     Route::get('stats', [StatsController::class, 'index'])->middleware('permission:view_reports')->name('stats.index');
 
+    Route::get('disbursements', [DisbursementController::class, 'index'])->middleware('role:super_admin|pharmacy_admin')->name('disbursements.index');
+    Route::get('disbursements/create', [DisbursementController::class, 'create'])->middleware('role:super_admin|pharmacy_admin')->name('disbursements.create');
+    Route::post('disbursements', [DisbursementController::class, 'store'])->middleware('role:super_admin|pharmacy_admin')->name('disbursements.store');
+    Route::get('disbursements/{disbursement}', [DisbursementController::class, 'show'])->middleware('role:super_admin|pharmacy_admin')->name('disbursements.show');
+    Route::delete('disbursements/{disbursement}', [DisbursementController::class, 'destroy'])->middleware('role:super_admin|pharmacy_admin')->name('disbursements.destroy');
+
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::post('notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
     Route::get('notifications/{notificationId}/go', [NotificationController::class, 'go'])->name('notifications.go');
@@ -138,6 +145,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::post('/profile/switch-pharmacy', [ProfileController::class, 'switchPharmacy'])->name('profile.switch-pharmacy');
+    Route::get('/profile/export-database-sql', [ProfileController::class, 'exportDatabaseSql'])->middleware('role:super_admin')->name('profile.export-database-sql');
 });
 
 require __DIR__.'/auth.php';

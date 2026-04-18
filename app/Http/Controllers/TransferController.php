@@ -32,16 +32,18 @@ class TransferController extends Controller
         $direction    = strtolower((string) $request->query('direction', 'desc')) === 'asc' ? 'asc' : 'desc';
         $fromDate     = $request->query('from_date');
         $toDate       = $request->query('to_date');
+        $depotId      = $request->query('depot_id');
 
         $allowedSorts = ['performed_at', 'status', 'id'];
         if (! in_array($sort, $allowedSorts, true)) {
             $sort = 'performed_at';
         }
 
-        $baseQuery = Transfer::with(['depot', 'performer'])
+        $baseQuery = Transfer::with(['depot', 'performer', 'items.drugUnit.drug'])
             ->when(! $isSuperAdmin && $user->pharmacy_id, function ($q) use ($user) {
                 $q->whereHas('depot', fn ($dq) => $dq->where('pharmacy_id', $user->pharmacy_id));
             })
+            ->when($depotId, fn ($q) => $q->where('to_depot_id', $depotId))
             ->when($search, function ($q) use ($search) {
                 $q->where(function ($inner) use ($search) {
                     $inner->whereHas('depot', fn ($d) => $d->whereRaw('name COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]))
@@ -53,48 +55,76 @@ class TransferController extends Controller
             ->when($toDate,   fn ($q) => $q->whereDate('performed_at', '<=', $toDate))
             ->orderBy($sort, $direction);
 
+        // Helper: compute stats for a transfer's items collection
+        $computeStats = function (Transfer $t): array {
+            $items          = $t->items;
+            $products       = $items->map(fn ($i) => $i->drugUnit?->drug_id)->filter()->unique()->count();
+            $boxes          = $items->count();
+            $unitsPerBox    = $items->sum(fn ($i) => $i->drugUnit?->quantite_contenu ?? 0);
+            $qtyTransferred = $items->sum(fn ($i) => ($i->drugUnit?->quantite_contenu ?? 0) * ($i->quantity ?? 1));
+            $qtyRemaining   = $items->sum(fn ($i) => $i->drugUnit?->quantite_actuelle ?? 0);
+            return compact('products', 'boxes', 'unitsPerBox', 'qtyTransferred', 'qtyRemaining');
+        };
+
         // Full transfer data for period print (only when both dates are set)
         $transfersForPrint = null;
         if ($fromDate && $toDate) {
             $transfersForPrint = (clone $baseQuery)
-                ->with(['depot', 'performer', 'items.drugUnit.drug'])
                 ->get()
-                ->map(fn (Transfer $t) => [
+                ->map(fn (Transfer $t) => array_merge([
                     'id'           => $t->id,
                     'status'       => $t->status,
                     'performed_at' => $t->performed_at,
                     'user'         => $t->performer,
                     'depot'        => $t->depot,
                     'items'        => $t->items->map(fn ($item) => [
-                        'quantity' => $item->quantity,
-                        'drug'     => $item->drugUnit?->drug ? [
+                        'quantity'          => $item->quantity,
+                        'quantite_contenu'  => $item->drugUnit?->quantite_contenu,
+                        'quantite_actuelle' => $item->drugUnit?->quantite_actuelle,
+                        'drug'              => $item->drugUnit?->drug ? [
                             'name'       => $item->drugUnit->drug->name,
                             'form_med'   => $item->drugUnit->drug->form_med,
                             'dosage_med' => $item->drugUnit->drug->dosage_med,
                         ] : null,
-                        'barcode'  => $item->drugUnit?->barcode,
-                        'price'    => $item->drugUnit?->price,
+                        'barcode'           => $item->drugUnit?->barcode,
+                        'price'             => $item->drugUnit?->price,
                     ])->values(),
-                ]);
+                ], $computeStats($t)));
         }
 
+        // Available depots for filter dropdown
+        $depots = Depot::query()
+            ->when(! $isSuperAdmin && $user->pharmacy_id, fn ($q) => $q->where('pharmacy_id', $user->pharmacy_id))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
         return Inertia::render('Transfers/Index', [
-            'transfers' => $baseQuery->paginate(10)->through(fn (Transfer $transfer) => [
-                'id'          => $transfer->id,
-                'uuid'        => $transfer->uuid,
-                'status'      => $transfer->status,
-                'created_at'  => $transfer->performed_at,
-                'user'        => $transfer->performer,
-                'depot'       => $transfer->depot,
-                'items_count' => $transfer->items_count,
-            ]),
+            'transfers' => $baseQuery->paginate(10)->through(function (Transfer $transfer) use ($computeStats) {
+                $stats = $computeStats($transfer);
+                return [
+                    'id'             => $transfer->id,
+                    'uuid'           => $transfer->uuid,
+                    'status'         => $transfer->status,
+                    'created_at'     => $transfer->performed_at,
+                    'user'           => $transfer->performer,
+                    'depot'          => $transfer->depot,
+                    'items_count'    => $transfer->items_count,
+                    'products'       => $stats['products'],
+                    'boxes'          => $stats['boxes'],
+                    'unitsPerBox'    => $stats['unitsPerBox'],
+                    'qtyTransferred' => $stats['qtyTransferred'],
+                    'qtyRemaining'   => $stats['qtyRemaining'],
+                ];
+            }),
             'transfersForPrint' => $transfersForPrint,
+            'depots'  => $depots,
             'filters' => [
                 'search'    => $search,
                 'sort'      => $sort,
                 'direction' => $direction,
                 'from_date' => $fromDate,
                 'to_date'   => $toDate,
+                'depot_id'  => $depotId,
             ],
         ]);
     }

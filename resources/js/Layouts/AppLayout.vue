@@ -66,6 +66,14 @@ const mainNavItems = [
         route: 'stats.index',
         permissions: ['view_reports'],
         icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'
+    },
+    {
+        name: 'Décaissements',
+        route: 'disbursements.index',
+        match: 'disbursements.*',
+        permissions: [],
+        roles: ['super_admin', 'pharmacy_admin'],
+        icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z'
     }
 ];
 
@@ -119,11 +127,17 @@ const settingsItems = computed(() => {
 });
 
 const visibleMainNavItems = computed(() => {
-    return mainNavItems.filter((item) => hasAnyPermission(item.permissions));
+    return mainNavItems.filter((item) => {
+        if (item.roles && !item.roles.some(r => roles.value.includes(r))) return false;
+        return hasAnyPermission(item.permissions);
+    });
 });
 
 const visibleAdminNavItems = computed(() => {
-    return adminNavItems.filter((item) => hasAnyPermission(item.permissions));
+    return adminNavItems.filter((item) => {
+        if (item.roles && !item.roles.some(r => roles.value.includes(r))) return false;
+        return hasAnyPermission(item.permissions);
+    });
 });
 
 const notifications = ref([]);
@@ -241,7 +255,7 @@ onUnmounted(() => {
                                     </svg>
                                 </div>
                                 <div class="brand-text">
-                                    <span class="brand-name">Sys E-Dépôt Pharma</span>
+                                    <span class="brand-name">SE-D Pharma</span>
                                     <span class="brand-subtitle">Lumière Afrique Group Sarl</span>
                                 </div>
                             </Link>
@@ -378,7 +392,7 @@ onUnmounted(() => {
 
                                     <div class="dropdown-divider"></div>
 
-                                    <DropdownLink 
+                                    <DropdownLink
                                         v-for="item in settingsItems"
                                         :key="item.route"
                                         :href="route(item.route)"
@@ -388,6 +402,18 @@ onUnmounted(() => {
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="item.icon"/>
                                         </svg>
                                         <span>{{ item.name }}</span>
+                                    </DropdownLink>
+
+                                    <!-- Export Database SQL (super_admin only) -->
+                                    <DropdownLink
+                                        v-if="roles.includes('super_admin')"
+                                        :href="route('profile.export-database-sql')"
+                                        class="dropdown-link"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
+                                        </svg>
+                                        <span>Exporter la base SQL</span>
                                     </DropdownLink>
 
                                     <div class="dropdown-divider"></div>
@@ -480,6 +506,16 @@ onUnmounted(() => {
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                                 </svg>
                                 <span>Mon Profil</span>
+                            </ResponsiveNavLink>
+                            <ResponsiveNavLink
+                                v-if="roles.includes('super_admin')"
+                                :href="route('profile.export-database-sql')"
+                                class="mobile-nav-link"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
+                                </svg>
+                                <span>Exporter la base SQL</span>
                             </ResponsiveNavLink>
                             <ResponsiveNavLink :href="route('logout')" method="post" as="button" class="mobile-nav-link logout">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
