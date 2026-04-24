@@ -8,12 +8,41 @@ const props = defineProps({
 });
 
 // ── State ────────────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'sysepharma_session_locked';
 const locked    = ref(false);
 const password  = ref('');
 const error     = ref('');
 const remaining = ref(5);   // failed attempts left
 const loading   = ref(false);
 const showPass  = ref(false);
+
+// Persist lock state to prevent bypass on refresh
+const persistLock = (isLocked) => {
+    if (isLocked) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            locked: true,
+            timestamp: Date.now()
+        }));
+    } else {
+        localStorage.removeItem(STORAGE_KEY);
+    }
+};
+
+const checkPersistedLock = () => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+        try {
+            const data = JSON.parse(stored);
+            // Lock if stored state is locked (regardless of time, for security)
+            if (data.locked) {
+                return true;
+            }
+        } catch {
+            localStorage.removeItem(STORAGE_KEY);
+        }
+    }
+    return false;
+};
 
 // ── Idle timer ───────────────────────────────────────────────────────────────
 let idleTimer = null;
@@ -29,6 +58,7 @@ const EVENTS = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'cl
 
 const lock = () => {
     locked.value = true;
+    persistLock(true);
     password.value = '';
     error.value = '';
     showPass.value = false;
@@ -46,6 +76,7 @@ const unlock = async () => {
         await axios.post(route('session.verify-password'), { password: password.value });
         // Success
         locked.value   = false;
+        persistLock(false);
         password.value = '';
         remaining.value = 5;
         resetTimer();
@@ -76,6 +107,11 @@ const onKeydown = (e) => {
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 onMounted(() => {
+    // Check if session was locked before refresh
+    if (checkPersistedLock()) {
+        locked.value = true;
+    }
+
     EVENTS.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
     window.addEventListener('keydown', onKeydown);
     resetTimer();
@@ -86,6 +122,26 @@ onUnmounted(() => {
     window.removeEventListener('keydown', onKeydown);
     clearTimeout(idleTimer);
 });
+
+// Handle page visibility change (tab switch/refresh)
+const handleVisibilityChange = () => {
+    if (document.hidden) {
+        // Page is being hidden, ensure lock state is persisted
+        if (locked.value) {
+            persistLock(true);
+        }
+    } else {
+        // Page is visible again, check if we should be locked
+        if (checkPersistedLock() && !locked.value) {
+            locked.value = true;
+        }
+    }
+};
+
+// Add visibility change listener
+if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+}
 </script>
 
 <template>

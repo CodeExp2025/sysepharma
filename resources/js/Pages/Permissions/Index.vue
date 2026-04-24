@@ -161,7 +161,7 @@ const groupedPermissions = computed(() => {
                                             {{ permission.name }}
                                         </span>
                                     </div>
-                                    <div class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                    <div v-if="permission.uuid" class="flex items-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                                         <Link
                                             :href="route('permissions.destroy', permission.uuid)"
                                             method="delete"
@@ -231,6 +231,7 @@ const groupedPermissions = computed(() => {
                                     </td>
                                     <td class="px-6 py-4 text-right">
                                         <Link
+                                            v-if="permission.uuid"
                                             :href="route('permissions.destroy', permission.uuid)"
                                             method="delete"
                                             as="button"

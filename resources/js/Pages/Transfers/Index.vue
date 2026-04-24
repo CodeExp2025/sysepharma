@@ -492,6 +492,7 @@ onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
 
 <style scoped>
 .print-transfers { display: none; }
+.print-transfers.visible { display: block; }
 .ptr-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #ea580c; padding-bottom:14px; margin-bottom:20px; font-family:'Segoe UI',Arial,sans-serif; }
 .ptr-header h1 { font-size:20px; font-weight:800; color:#9a3412; letter-spacing:.5px; }
 .ptr-period { font-size:12px; color:#6b7280; margin-top:4px; }
@@ -524,17 +525,125 @@ onBeforeUnmount(() => window.removeEventListener('afterprint', onAfterPrint));
 
 <style>
 @media print {
+    /* Hide everything except print container */
     body.printing-transfers * { visibility: hidden !important; }
     body.printing-transfers .print-transfers,
     body.printing-transfers .print-transfers * { visibility: visible !important; }
+
+    /* Print container - allow natural flow across pages */
     body.printing-transfers .print-transfers {
-        position: fixed !important; top: 0 !important; left: 0 !important;
-        width: 100% !important; background: white !important;
-        display: block !important; padding: 20px !important;
+        position: static !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        background: white !important;
+        display: block !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow: visible !important;
     }
-    body { background: white; margin: 0; }
-    @page { margin: 1cm; }
-    .ptr-transfer { page-break-inside: avoid; }
-    .ptr-day-group { page-break-inside: avoid; }
+
+    /* Page setup */
+    @page {
+        size: auto;
+        margin: 12mm 10mm;
+    }
+
+    body {
+        background: white !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Page break controls */
+    .ptr-day-group {
+        page-break-inside: avoid;
+        break-inside: avoid;
+        margin-bottom: 20px !important;
+    }
+
+    .ptr-transfer {
+        page-break-inside: avoid;
+        break-inside: avoid;
+        margin-bottom: 16px !important;
+    }
+
+    /* Force page break before each day group except first */
+    .ptr-day-group + .ptr-day-group {
+        page-break-before: auto;
+        break-before: auto;
+    }
+
+    /* Table handling */
+    .ptr-table {
+        width: 100% !important;
+        max-width: 100% !important;
+        table-layout: fixed !important;
+        font-size: 9px !important;
+    }
+
+    .ptr-table th,
+    .ptr-table td {
+        padding: 3px 5px !important;
+        overflow-wrap: break-word;
+        word-wrap: break-word;
+    }
+
+    /* Ensure tables don't break inside */
+    .ptr-table {
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+
+    /* Header and footer positioning */
+    .ptr-header {
+        page-break-after: avoid;
+        break-after: avoid;
+        margin-bottom: 15px !important;
+    }
+
+    .ptr-footer {
+        page-break-before: auto;
+        break-before: auto;
+        margin-top: 20px !important;
+        position: static !important;
+    }
+
+    /* Summary cards */
+    .ptr-summary {
+        page-break-inside: avoid;
+        break-inside: avoid;
+        page-break-after: avoid;
+        break-after: avoid;
+        margin-bottom: 15px !important;
+    }
+
+    .ptr-card {
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+
+    /* Transfer title */
+    .ptr-day-title {
+        page-break-after: avoid;
+        break-after: avoid;
+        margin-bottom: 8px !important;
+    }
+
+    /* Stats bar */
+    .ptr-stats-bar {
+        page-break-inside: avoid;
+        break-inside: avoid;
+        page-break-after: avoid;
+        break-after: avoid;
+    }
+
+    /* Prevent orphans/widows */
+    .ptr-transfer-header,
+    .ptr-table thead {
+        page-break-after: avoid;
+        break-after: avoid;
+    }
 }
 </style>

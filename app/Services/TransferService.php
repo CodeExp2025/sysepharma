@@ -34,6 +34,7 @@ class TransferService
             foreach ($items as $item) {
                 $unit     = $units[$item['drug_unit_id']];
                 $quantity = (int) ($item['quantity'] ?? 1);
+                $isExpired = $item['is_expired'] ?? false;
 
                 if ($unit->status !== 'en_stock') {
                     throw new Exception("L'unité {$unit->barcode} n'est pas en stock (Statut: {$unit->status}).");
@@ -46,6 +47,31 @@ class TransferService
                 if ($quantity < 1 || $quantity > $unit->quantite_actuelle) {
                     throw new Exception("Quantité invalide ({$quantity}) pour l'unité {$unit->barcode} (disponible: {$unit->quantite_actuelle}).");
                 }
+
+                // If unit is expired, mark as 'a_detruire' instead of transferring
+                if ($isExpired) {
+                    $unit->update(['status' => 'a_detruire']);
+                    StockMovement::create([
+                        'drug_unit_id' => $unit->id,
+                        'from_type'    => $unit->current_location_type,
+                        'from_id'      => $unit->current_location_id,
+                        'to_type'      => null,
+                        'to_id'        => null,
+                        'action'       => 'destruction',
+                        'performed_by' => $user->id,
+                        'performed_at' => now(),
+                    ]);
+                    continue; // Skip transfer for expired units
+                }
+            }
+
+            // Filter out expired items from transfer
+            $validItems = collect($items)->filter(function ($item) {
+                return !($item['is_expired'] ?? false);
+            })->values()->all();
+
+            if (empty($validItems)) {
+                throw new Exception('Toutes les unités sélectionnées sont périmées et ont été marquées comme "à détruire". Aucun transfert effectué.');
             }
 
             $fromPharmacyId = $units->first()?->current_location_id ?? ($user->pharmacy_id ?? null);
@@ -55,11 +81,11 @@ class TransferService
                 'to_depot_id'      => $targetDepot->id,
                 'performed_by'     => $user->id,
                 'status'           => 'completed',
-                'items_count'      => count($items),
+                'items_count'      => count($validItems),
                 'performed_at'     => now(),
             ]);
 
-            foreach ($items as $item) {
+            foreach ($validItems as $item) {
                 $unit     = $units[$item['drug_unit_id']];
                 $quantity = (int) ($item['quantity'] ?? 1);
 

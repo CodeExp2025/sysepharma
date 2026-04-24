@@ -28,6 +28,11 @@ class Transfer extends Model
         return $this->belongsTo(Depot::class, 'to_depot_id');
     }
 
+    public function fromPharmacy()
+    {
+        return $this->belongsTo(Pharmacy::class, 'from_pharmacy_id');
+    }
+
     public function performer()
     {
         return $this->belongsTo(User::class, 'performed_by');
@@ -36,5 +41,10 @@ class Transfer extends Model
     public function items()
     {
         return $this->hasMany(TransferItem::class);
+    }
+
+    public function stockMovements()
+    {
+        return $this->hasMany(StockMovement::class);
     }
 }

@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import StatsCard from '@/Components/StatsCard.vue';
 import { ref, computed, onMounted } from 'vue';
 import { Chart, registerables } from 'chart.js';
 
@@ -12,6 +13,7 @@ const props = defineProps({
     salesData: Array, // Array of sales over time
     categoryStats: Array, // Sales by category
     recentSales: Array, // Recent sales
+    stockByLocation: Object, // Stock grouped by location (pharmacy vs depots)
 });
 
 const salesChart = ref(null);
@@ -26,15 +28,19 @@ onMounted(() => {
 
 const initSalesChart = () => {
     if (!salesChart.value) return;
-    
+
+    const hasData = props.salesData && props.salesData.length > 0 && props.salesData.some(d => d.count > 0);
+    const labels = hasData ? props.salesData.map(d => d.date) : [];
+    const data = hasData ? props.salesData.map(d => d.count) : [];
+
     const ctx = salesChart.value.getContext('2d');
     new Chart(ctx, {
         type: 'line',
         data: {
-            labels: props.salesData?.map(d => d.date) || ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
+            labels: labels,
             datasets: [{
                 label: 'Ventes',
-                data: props.salesData?.map(d => d.count) || [12, 19, 15, 25, 22, 30, 28],
+                data: data,
                 borderColor: 'rgb(59, 130, 246)',
                 backgroundColor: 'rgba(59, 130, 246, 0.1)',
                 tension: 0.4,
@@ -68,19 +74,24 @@ const initSalesChart = () => {
 
 const initCategoryChart = () => {
     if (!categoryChart.value) return;
-    
+
+    const hasData = props.categoryStats && props.categoryStats.length > 0 && props.categoryStats.some(c => c.count > 0);
+    const labels = hasData ? props.categoryStats.map(c => c.name) : [];
+    const data = hasData ? props.categoryStats.map(c => c.count) : [];
+
     const ctx = categoryChart.value.getContext('2d');
     new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: props.categoryStats?.map(c => c.name) || ['Antibiotiques', 'Antalgiques', 'Vitamines', 'Autres'],
+            labels: labels,
             datasets: [{
-                data: props.categoryStats?.map(c => c.count) || [35, 25, 20, 20],
+                data: data,
                 backgroundColor: [
                     'rgb(59, 130, 246)',
                     'rgb(16, 185, 129)',
                     'rgb(245, 158, 11)',
                     'rgb(139, 92, 246)',
+                    'rgb(236, 72, 153)',
                 ],
                 borderWidth: 0
             }]
@@ -99,34 +110,68 @@ const initCategoryChart = () => {
 
 const initStockChart = () => {
     if (!stockChart.value) return;
-    
+
     const ctx = stockChart.value.getContext('2d');
+
+    // Check if we have location-based data
+    const hasLocationData = props.stockByLocation &&
+        (props.stockByLocation.pharmacy?.en_stock > 0 ||
+         props.stockByLocation.depots?.en_stock > 0);
+
+    // If no location data, show empty state
+    if (!hasLocationData) {
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: []
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+        return;
+    }
+
+    const pharmacy = props.stockByLocation?.pharmacy || { en_stock: 0, vendue: 0 };
+    const depots = props.stockByLocation?.depots || { en_stock: 0, vendue: 0 };
+
     new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: ['Stock Total', 'En Stock', 'Réservés', 'Vendus'],
-            datasets: [{
-                label: 'Unités',
-                data: [
-                    props.stats?.total_units || 0,
-                    props.stats?.total_stock_pharmacy || 0,
-                    props.stats?.reserved_units || 0,
-                    props.stats?.sold_units || 0
-                ],
-                backgroundColor: [
-                    'rgba(59, 130, 246, 0.8)',
-                    'rgba(16, 185, 129, 0.8)',
-                    'rgba(245, 158, 11, 0.8)',
-                    'rgba(239, 68, 68, 0.8)',
-                ],
-            }]
+            labels: ['En Stock', 'Vendus'],
+            datasets: [
+                {
+                    label: pharmacy.label || 'Pharmacie',
+                    data: [pharmacy.en_stock, pharmacy.vendue],
+                    backgroundColor: ['rgba(59, 130, 246, 0.8)', 'rgba(59, 130, 246, 0.5)'],
+                    borderColor: 'rgba(59, 130, 246, 1)',
+                    borderWidth: 1,
+                },
+                {
+                    label: depots.label || 'Dépôts',
+                    data: [depots.en_stock, depots.vendue],
+                    backgroundColor: ['rgba(16, 185, 129, 0.8)', 'rgba(16, 185, 129, 0.5)'],
+                    borderColor: 'rgba(16, 185, 129, 1)',
+                    borderWidth: 1,
+                }
+            ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    display: false
+                    display: true,
+                    position: 'bottom',
+                    labels: {
+                        usePointStyle: true,
+                        padding: 20
+                    }
                 }
             },
             scales: {
@@ -134,6 +179,10 @@ const initStockChart = () => {
                     beginAtZero: true,
                     grid: {
                         color: 'rgba(0, 0, 0, 0.05)'
+                    },
+                    title: {
+                        display: true,
+                        text: 'Nombre d\'unités'
                     }
                 },
                 x: {
@@ -189,99 +238,45 @@ const lowStock = computed(() => {
 
         <div class="py-8">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-                <!-- Main Stats Grid -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                    <!-- Stock Pharmacie -->
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group hover:shadow-lg transition-all duration-300">
-                        <div class="p-6">
-                            <div class="flex items-center justify-between mb-4">
-                                <div class="w-12 h-12 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                                    </svg>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-3xl font-bold text-gray-900">
-                                        {{ stats?.total_stock_pharmacy || 0 }}
-                                    </div>
-                                </div>
-                            </div>
-                            <h3 class="text-sm font-semibold text-gray-600 mb-1">{{ stats?.stock_scope_label || 'Stock' }}</h3>
-                            <div class="flex items-center gap-2">
-                                <div class="flex-1 bg-gray-200 rounded-full h-2">
-                                    <div class="bg-blue-600 h-2 rounded-full transition-all duration-500" :style="{ width: stockPercentage + '%' }"></div>
-                                </div>
-                                <span class="text-xs font-semibold text-blue-600">{{ stockPercentage }}%</span>
-                            </div>
-                        </div>
-                    </div>
+                <!-- Main Stats Grid - Using new StatsCard component with staggered animations -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6 stagger-fast">
+                    <StatsCard
+                        :title="stats?.stock_scope_label || 'Stock Pharmacie'"
+                        :value="stats?.total_stock_pharmacy || 0"
+                        icon="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+                        variant="primary"
+                        :progress="stockPercentage"
+                        :animation-delay="0"
+                        :href="route('drug-units.index')"
+                    />
 
-                    <!-- Ventes Aujourd'hui -->
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group hover:shadow-lg transition-all duration-300">
-                        <div class="p-6">
-                            <div class="flex items-center justify-between mb-4">
-                                <div class="w-12 h-12 bg-gradient-to-br from-green-100 to-green-200 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                                    <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
-                                    </svg>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-3xl font-bold text-gray-900">
-                                        {{ stats?.total_sales_today || 0 }}
-                                    </div>
-                                </div>
-                            </div>
-                            <h3 class="text-sm font-semibold text-gray-600 mb-1">Ventes Aujourd'hui</h3>
-                            <p class="text-xs text-green-600 font-medium">
-                                <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
-                                </svg>
-                                Unités vendues
-                            </p>
-                        </div>
-                    </div>
+                    <StatsCard
+                        title="Ventes Aujourd'hui"
+                        :value="stats?.total_sales_today || 0"
+                        icon="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
+                        variant="success"
+                        subtitle="Unités vendues"
+                        :animation-delay="50"
+                        :href="route('sales.index')"
+                    />
 
-                    <!-- Alertes Péremption -->
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group hover:shadow-lg transition-all duration-300">
-                        <div class="p-6">
-                            <div class="flex items-center justify-between mb-4">
-                                <div class="w-12 h-12 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                                    <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                                    </svg>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-3xl font-bold text-gray-900">
-                                        {{ stats?.expiring_soon || 0 }}
-                                    </div>
-                                </div>
-                            </div>
-                            <h3 class="text-sm font-semibold text-gray-600 mb-1">Alertes Péremption</h3>
-                            <p class="text-xs text-yellow-600 font-medium">Prochains 30 jours</p>
-                        </div>
-                    </div>
+                    <StatsCard
+                        title="Alertes Péremption"
+                        :value="stats?.expiring_soon || 0"
+                        icon="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                        variant="warning"
+                        subtitle="Prochains 30 jours"
+                        :animation-delay="100"
+                    />
 
-                    <!-- Stock Faible -->
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group hover:shadow-lg transition-all duration-300">
-                        <div class="p-6">
-                            <div class="flex items-center justify-between mb-4">
-                                <div class="w-12 h-12 bg-gradient-to-br from-red-100 to-red-200 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                                    <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                                    </svg>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-3xl font-bold text-gray-900">
-                                        {{ lowStockDrugs?.length || 0 }}
-                                    </div>
-                                </div>
-                            </div>
-                            <h3 class="text-sm font-semibold text-gray-600 mb-1">Stock Faible</h3>
-                            <p class="text-xs text-red-600 font-medium">
-                                {{ criticalStock.length }} en rupture
-                            </p>
-                        </div>
-                    </div>
+                    <StatsCard
+                        title="Stock Faible"
+                        :value="lowStockDrugs?.length || 0"
+                        icon="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                        variant="danger"
+                        :subtitle="`${criticalStock.length} en rupture de stock`"
+                        :animation-delay="150"
+                    />
                 </div>
 
                 <!-- Charts Section -->
@@ -298,8 +293,14 @@ const lowStock = computed(() => {
                             <p class="text-sm text-blue-700 mt-1">7 derniers jours</p>
                         </div>
                         <div class="p-6">
-                            <div class="h-64">
-                                <canvas ref="salesChart"></canvas>
+                            <div class="h-64 relative">
+                                <canvas v-if="salesData && salesData.some(d => d.count > 0)" ref="salesChart"></canvas>
+                                <div v-else class="flex flex-col items-center justify-center h-full text-gray-400">
+                                    <svg class="w-12 h-12 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                                    </svg>
+                                    <p class="text-sm font-medium">Aucune vente sur les 7 derniers jours</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -316,8 +317,15 @@ const lowStock = computed(() => {
                             </h3>
                         </div>
                         <div class="p-6">
-                            <div class="h-64">
-                                <canvas ref="categoryChart"></canvas>
+                            <div class="h-64 relative">
+                                <canvas v-if="categoryStats && categoryStats.some(c => c.count > 0)" ref="categoryChart"></canvas>
+                                <div v-else class="flex flex-col items-center justify-center h-full text-gray-400">
+                                    <svg class="w-12 h-12 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/>
+                                    </svg>
+                                    <p class="text-sm font-medium">Aucune vente par catégorie</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -330,12 +338,20 @@ const lowStock = computed(() => {
                             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                             </svg>
-                            Vue d'Ensemble du Stock
+                            Vue d'Ensemble du Stock par Emplacement
                         </h3>
+                        <p class="text-sm text-indigo-700 mt-1">Comparaison Pharmacie vs Dépôts</p>
                     </div>
                     <div class="p-6">
-                        <div class="h-64">
+                        <div class="h-64 relative">
                             <canvas ref="stockChart"></canvas>
+                            <div v-if="!stockByLocation || (!stockByLocation.pharmacy?.en_stock && !stockByLocation.depots?.en_stock)"
+                                 class="flex flex-col items-center justify-center h-full text-gray-400 absolute inset-0 bg-white/80">
+                                <svg class="w-12 h-12 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                                </svg>
+                                <p class="text-sm font-medium">Aucune donnée de stock disponible</p>
+                            </div>
                         </div>
                     </div>
                 </div>

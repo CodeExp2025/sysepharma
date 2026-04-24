@@ -43,4 +43,22 @@ class PermissionController extends Controller
         $permission->delete();
         return redirect()->route('permissions.index')->with('success', 'Permission supprimée avec succès.');
     }
+
+    public function edit(Permission $permission)
+    {
+        return Inertia::render('Permissions/Edit', [
+            'permission' => $permission,
+        ]);
+    }
+
+    public function update(Request $request, Permission $permission)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|unique:permissions,name,' . $permission->id,
+        ]);
+
+        $permission->update(['name' => $validated['name']]);
+
+        return redirect()->route('permissions.index')->with('success', 'Permission mise à jour avec succès.');
+    }
 }

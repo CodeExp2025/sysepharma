@@ -31,6 +31,7 @@ const formatDate = (date) => {
                 </div>
                 <div class="flex gap-2">
                     <Link
+                        v-if="transfer.uuid"
                         :href="route('transfers.print', transfer.uuid)"
                         target="_blank"
                         class="px-4 py-2 bg-indigo-600 text-white border border-indigo-700 rounded-lg font-medium text-sm hover:bg-indigo-700 transition-all duration-150"

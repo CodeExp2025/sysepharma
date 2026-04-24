@@ -55,6 +55,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('drug-units/{drugUnit}/edit', [DrugUnitController::class, 'edit'])->middleware('role:super_admin|pharmacy_admin')->name('drug-units.edit');
     Route::put('drug-units/{drugUnit}', [DrugUnitController::class, 'update'])->middleware('role:super_admin|pharmacy_admin')->name('drug-units.update');
     Route::delete('drug-units/{drugUnit}', [DrugUnitController::class, 'destroy'])->middleware('role:super_admin|pharmacy_admin')->name('drug-units.destroy');
+    Route::get('drug-units/stock-content', [DrugUnitController::class, 'stockContent'])->middleware('permission:view_stock')->name('drug-units.stock-content');
 
     // Transfers
     Route::get('transfers', [TransferController::class, 'index'])->middleware('permission:transfer_stock')->name('transfers.index');
@@ -83,6 +84,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('permissions', [PermissionController::class, 'index'])->middleware('permission:manage_roles')->name('permissions.index');
     Route::get('permissions/create', [PermissionController::class, 'create'])->middleware('permission:manage_roles')->name('permissions.create');
     Route::post('permissions', [PermissionController::class, 'store'])->middleware('permission:manage_roles')->name('permissions.store');
+    Route::get('permissions/{permission}/edit', [PermissionController::class, 'edit'])->middleware('permission:manage_roles')->name('permissions.edit');
+    Route::put('permissions/{permission}', [PermissionController::class, 'update'])->middleware('permission:manage_roles')->name('permissions.update');
     Route::delete('permissions/{permission}', [PermissionController::class, 'destroy'])->middleware('permission:manage_roles')->name('permissions.destroy');
 
     Route::get('users', [UserController::class, 'index'])->middleware('permission:manage_users')->name('users.index');

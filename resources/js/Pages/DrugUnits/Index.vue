@@ -31,6 +31,57 @@ const isDepotUser = computed(() => {
 const actionMessage = ref('');
 const actionError = ref('');
 
+// Stock content modal
+const showStockModal = ref(false);
+const stockModalTab = ref('content'); // 'content' or 'transfers'
+const stockContent = ref([]);
+const transferHistory = ref({ sent: [], received: [] });
+const loadingStockModal = ref(false);
+// Location selector for modal (separate from page filters)
+const modalScope = ref('all');
+const modalDepotId = ref('');
+
+const openStockModal = () => {
+    // Initialize with current page filters
+    modalScope.value = scope.value;
+    modalDepotId.value = depotId.value;
+    showStockModal.value = true;
+    fetchStockContent();
+};
+
+const closeStockModal = () => {
+    showStockModal.value = false;
+    stockContent.value = [];
+    transferHistory.value = { sent: [], received: [] };
+};
+
+const fetchStockContent = async () => {
+    loadingStockModal.value = true;
+    try {
+        const params = {
+            scope: modalScope.value,
+            depot_id: modalScope.value === 'depot' ? modalDepotId.value : undefined,
+        };
+        
+        const response = await fetch(route('drug-units.stock-content', params), {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            stockContent.value = data.stock_content || [];
+            transferHistory.value = data.transfers || { sent: [], received: [] };
+        }
+    } catch (error) {
+        console.error('Failed to fetch stock content:', error);
+    } finally {
+        loadingStockModal.value = false;
+    }
+};
+
 const notifyLowStock = (drugId) => {
     actionMessage.value = '';
     actionError.value = '';
@@ -172,6 +223,16 @@ const formatDate = (date) => {
                     </p>
                 </div>
                 <div class="flex items-center gap-2">
+                    <button
+                        type="button"
+                        class="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg font-semibold text-sm text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200"
+                        @click="openStockModal"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+                        </svg>
+                        Contenu du Stock
+                    </button>
                     <button
                         type="button"
                         class="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg font-semibold text-sm text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200"
@@ -549,6 +610,298 @@ const formatDate = (date) => {
                 </div>
             </div>
         </div>
+
+        <!-- ── Stock Content Modal ── -->
+        <Teleport to="body">
+            <Transition
+                enter-active-class="transition ease-out duration-300"
+                enter-from-class="opacity-0"
+                enter-to-class="opacity-100"
+                leave-active-class="transition ease-in duration-200"
+                leave-from-class="opacity-100"
+                leave-to-class="opacity-0"
+            >
+                <div v-if="showStockModal" class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+                    <!-- Backdrop -->
+                    <div class="fixed inset-0 bg-gray-500/75 backdrop-blur-sm transition-opacity" @click="closeStockModal"></div>
+                    
+                    <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+                        <div class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-5xl">
+                            <!-- Header -->
+                            <div class="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <h3 class="text-lg font-bold text-white" id="modal-title">
+                                                Contenu du Stock
+                                            </h3>
+                                            <p class="text-sm text-blue-100">
+                                                {{ modalScope === 'depot' && modalDepotId ? (depots.find(d => d.id == modalDepotId)?.name || 'Dépôt sélectionné') : modalScope === 'pharmacy' ? (activePharmacy?.name || 'Pharmacie') : 'Tous les emplacements' }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        class="text-white/80 hover:text-white transition-colors p-2 rounded-lg hover:bg-white/10"
+                                        @click="closeStockModal"
+                                    >
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Location Selector -->
+                            <div class="bg-gray-50 px-6 py-3 border-b border-gray-200">
+                                <div class="flex flex-wrap items-center gap-4">
+                                    <div class="flex items-center gap-2">
+                                        <label class="text-xs font-medium text-gray-600 uppercase">Emplacement</label>
+                                        <select 
+                                            v-model="modalScope" 
+                                            class="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            @change="modalDepotId = ''; fetchStockContent()"
+                                        >
+                                            <option value="all">Tous les emplacements</option>
+                                            <option value="pharmacy">Pharmacie</option>
+                                            <option value="depot">Dépôt spécifique</option>
+                                        </select>
+                                    </div>
+                                    <div v-if="modalScope === 'depot'" class="flex items-center gap-2">
+                                        <label class="text-xs font-medium text-gray-600 uppercase">Dépôt</label>
+                                        <select 
+                                            v-model="modalDepotId" 
+                                            class="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            @change="fetchStockContent()"
+                                        >
+                                            <option value="">Choisir un dépôt</option>
+                                            <option v-for="depot in depots" :key="depot.id" :value="depot.id">{{ depot.name }}</option>
+                                        </select>
+                                    </div>
+                                    <div v-else-if="modalScope === 'pharmacy'" class="flex items-center gap-2">
+                                        <span class="text-sm text-gray-600">
+                                            <span v-if="activePharmacy">{{ activePharmacy.name }}</span>
+                                            <span v-else>Pharmacie active</span>
+                                        </span>
+                                    </div>
+                                    <div class="ml-auto">
+                                        <span class="text-xs text-gray-500">
+                                            {{ modalScope === 'all' ? 'Vue globale' : modalScope === 'pharmacy' ? 'Vue pharmacie' : modalDepotId ? 'Vue dépôt' : 'Sélectionnez un dépôt' }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Tabs -->
+                            <div class="border-b border-gray-200">
+                                <nav class="flex gap-1 px-6" aria-label="Tabs">
+                                    <button
+                                        type="button"
+                                        class="px-4 py-3 text-sm font-medium border-b-2 transition-colors"
+                                        :class="stockModalTab === 'content' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                                        @click="stockModalTab = 'content'"
+                                    >
+                                        <span class="flex items-center gap-2">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                                            </svg>
+                                            Stock Actuel
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="px-4 py-3 text-sm font-medium border-b-2 transition-colors"
+                                        :class="stockModalTab === 'transfers' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                                        @click="stockModalTab = 'transfers'"
+                                    >
+                                        <span class="flex items-center gap-2">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                                            </svg>
+                                            Traçabilité Transferts
+                                        </span>
+                                    </button>
+                                </nav>
+                            </div>
+                            
+                            <!-- Content -->
+                            <div class="p-6 max-h-[60vh] overflow-y-auto">
+                                <!-- Loading -->
+                                <div v-if="loadingStockModal" class="flex flex-col items-center justify-center py-12">
+                                    <div class="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                                    <p class="mt-4 text-sm text-gray-500">Chargement...</p>
+                                </div>
+                                
+                                <!-- Stock Content Tab -->
+                                <div v-else-if="stockModalTab === 'content'">
+                                    <div v-if="stockContent.length === 0" class="text-center py-12">
+                                        <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                            <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+                                            </svg>
+                                        </div>
+                                        <p class="text-gray-500 font-medium">Aucun stock disponible</p>
+                                        <p class="text-sm text-gray-400 mt-1">Le stock est vide pour cet emplacement</p>
+                                    </div>
+                                    
+                                    <div v-else>
+                                        <!-- Summary Cards -->
+                                        <div class="grid grid-cols-3 gap-4 mb-6">
+                                            <div class="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                                                <p class="text-xs font-medium text-blue-600 uppercase">Total Médicaments</p>
+                                                <p class="text-2xl font-bold text-blue-900 mt-1">{{ stockContent.length }}</p>
+                                            </div>
+                                            <div class="bg-green-50 rounded-xl p-4 border border-green-200">
+                                                <p class="text-xs font-medium text-green-600 uppercase">Unités en Stock</p>
+                                                <p class="text-2xl font-bold text-green-900 mt-1">
+                                                    {{ stockContent.reduce((sum, item) => sum + (item.total_quantity || 0), 0) }}
+                                                </p>
+                                            </div>
+                                            <div class="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                                                <p class="text-xs font-medium text-amber-600 uppercase">Valeur Estimée</p>
+                                                <p class="text-2xl font-bold text-amber-900 mt-1">
+                                                    {{ stockContent.reduce((sum, item) => sum + ((item.total_quantity || 0) * (item.avg_price || 0)), 0).toLocaleString() }} FCFA
+                                                </p>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Stock Table -->
+                                        <table class="min-w-full divide-y divide-gray-200">
+                                            <thead class="bg-gray-50">
+                                                <tr>
+                                                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Médicament</th>
+                                                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Catégorie</th>
+                                                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Qté</th>
+                                                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Prix Moyen</th>
+                                                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Valeur</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-gray-200">
+                                                <tr v-for="item in stockContent" :key="item.drug_id" class="hover:bg-gray-50">
+                                                    <td class="px-4 py-3">
+                                                        <div class="text-sm font-medium text-gray-900">{{ item.drug_name }}</div>
+                                                        <div class="text-xs text-gray-500">{{ item.dosage || '-' }}</div>
+                                                    </td>
+                                                    <td class="px-4 py-3">
+                                                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                                            {{ item.category || 'Non classé' }}
+                                                        </span>
+                                                    </td>
+                                                    <td class="px-4 py-3 text-right">
+                                                        <span class="text-sm font-semibold" :class="item.total_quantity < 10 ? 'text-red-600' : 'text-gray-900'">
+                                                            {{ item.total_quantity }}
+                                                        </span>
+                                                    </td>
+                                                    <td class="px-4 py-3 text-right text-sm text-gray-600">
+                                                        {{ (item.avg_price || 0).toLocaleString() }} FCFA
+                                                    </td>
+                                                    <td class="px-4 py-3 text-right text-sm font-semibold text-gray-900">
+                                                        {{ ((item.total_quantity || 0) * (item.avg_price || 0)).toLocaleString() }} FCFA
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                
+                                <!-- Transfers Tab -->
+                                <div v-else-if="stockModalTab === 'transfers'">
+                                    <div class="grid grid-cols-2 gap-6">
+                                        <!-- Sent Transfers -->
+                                        <div>
+                                            <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                                <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                                                Envoi de Stock ({{ transferHistory.sent?.length || 0 }})
+                                            </h4>
+                                            <div v-if="!transferHistory.sent || transferHistory.sent.length === 0" class="text-center py-8 bg-gray-50 rounded-lg">
+                                                <p class="text-sm text-gray-500">Aucun transfert envoyé</p>
+                                            </div>
+                                            <div v-else class="space-y-2 max-h-64 overflow-y-auto">
+                                                <div v-for="transfer in transferHistory.sent" :key="transfer.id" class="p-3 bg-red-50 rounded-lg border border-red-100">
+                                                    <div class="flex justify-between items-start">
+                                                        <div>
+                                                            <p class="text-sm font-medium text-gray-900">→ {{ transfer.to_depot_name }}</p>
+                                                            <p class="text-xs text-gray-500">{{ transfer.item_count }} article(s)</p>
+                                                        </div>
+                                                        <span class="text-xs font-medium text-red-600">
+                                                            -{{ transfer.total_quantity }}
+                                                        </span>
+                                                    </div>
+                                                    <p class="text-xs text-gray-400 mt-1">{{ new Date(transfer.performed_at).toLocaleString('fr-FR') }}</p>
+                                                    <p class="text-xs text-gray-500">Par: {{ transfer.performer_name }}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Received Transfers -->
+                                        <div>
+                                            <h4 class="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                                <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                                                Réception de Stock ({{ transferHistory.received?.length || 0 }})
+                                            </h4>
+                                            <div v-if="!transferHistory.received || transferHistory.received.length === 0" class="text-center py-8 bg-gray-50 rounded-lg">
+                                                <p class="text-sm text-gray-500">Aucun transfert reçu</p>
+                                            </div>
+                                            <div v-else class="space-y-2 max-h-64 overflow-y-auto">
+                                                <div v-for="transfer in transferHistory.received" :key="transfer.id" class="p-3 bg-green-50 rounded-lg border border-green-100">
+                                                    <div class="flex justify-between items-start">
+                                                        <div>
+                                                            <p class="text-sm font-medium text-gray-900">← {{ transfer.from_pharmacy_name }}</p>
+                                                            <p class="text-xs text-gray-500">{{ transfer.item_count }} article(s)</p>
+                                                        </div>
+                                                        <span class="text-xs font-medium text-green-600">
+                                                            +{{ transfer.total_quantity }}
+                                                        </span>
+                                                    </div>
+                                                    <p class="text-xs text-gray-400 mt-1">{{ new Date(transfer.performed_at).toLocaleString('fr-FR') }}</p>
+                                                    <p class="text-xs text-gray-500">Par: {{ transfer.performer_name }}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Footer -->
+                            <div class="bg-gray-50 px-6 py-4 flex justify-end gap-3">
+                                <button
+                                    type="button"
+                                    class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                                    @click="closeStockModal"
+                                >
+                                    Fermer
+                                </button>
+                                <button
+                                    type="button"
+                                    class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                                    @click="fetchStockContent"
+                                    :disabled="loadingStockModal"
+                                >
+                                    <span v-if="loadingStockModal" class="flex items-center gap-2">
+                                        <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Actualiser...
+                                    </span>
+                                    <span v-else class="flex items-center gap-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                        </svg>
+                                        Actualiser
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
 
         <!-- ── Print Report (only visible on print) ── -->
         <div v-if="isPrinting" class="print-report">

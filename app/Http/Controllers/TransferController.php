@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\Depot;
 use App\Models\DrugUnit;
+use App\Models\StockMovement;
 use App\Models\Transfer;
+use App\Models\TransferItem;
 use App\Models\User;
 use App\Notifications\TransferCompletedNotification;
 use App\Services\TransferService;
@@ -60,9 +62,15 @@ class TransferController extends Controller
             $items          = $t->items;
             $products       = $items->map(fn ($i) => $i->drugUnit?->drug_id)->filter()->unique()->count();
             $boxes          = $items->count();
-            $unitsPerBox    = $items->sum(fn ($i) => $i->drugUnit?->quantite_contenu ?? 0);
-            $qtyTransferred = $items->sum(fn ($i) => ($i->drugUnit?->quantite_contenu ?? 0) * ($i->quantity ?? 1));
-            $qtyRemaining   = $items->sum(fn ($i) => $i->drugUnit?->quantite_actuelle ?? 0);
+            // quantity in transfer_items is the actual units transferred (not boxes)
+            // For full transfer: quantity = quantite_actuelle (all units in box)
+            // For partial transfer: quantity = user-specified amount
+            $qtyTransferred = $items->sum(fn ($i) => $i->quantity ?? 0);
+            // qtyRemaining = what was originally in boxes minus what was transferred
+            // This represents what stayed at the pharmacy after partial transfers
+            $qtyRemaining   = $items->sum(fn ($i) => ($i->drugUnit?->quantite_contenu ?? 0) - ($i->quantity ?? 0));
+            // Average units per box for display purposes
+            $unitsPerBox    = $boxes > 0 ? round($qtyTransferred / $boxes, 1) : 0;
             return compact('products', 'boxes', 'unitsPerBox', 'qtyTransferred', 'qtyRemaining');
         };
 
@@ -152,9 +160,137 @@ class TransferController extends Controller
             abort(403);
         }
 
+        // Load relationships needed for restoration
+        $transfer->load(['items.drugUnit', 'depot', 'stockMovements']);
+
+        // Log the deletion before removing
+        try {
+            $restoredItems = [];
+            foreach ($transfer->items as $item) {
+                $unit = $item->drugUnit;
+                if ($unit) {
+                    $restoredItems[] = [
+                        'drug_unit_id' => $unit->id,
+                        'barcode' => $unit->barcode,
+                        'quantity' => $item->quantity,
+                        'from_location' => $transfer->to_depot_id,
+                        'to_location' => $transfer->from_pharmacy_id,
+                    ];
+                }
+            }
+
+            AuditLog::create([
+                'user_id'     => $user->id,
+                'action'      => 'transfer_deleted',
+                'entity_type' => 'Transfer',
+                'entity_id'   => $transfer->id,
+                'old_values'  => [
+                    'transfer_id' => $transfer->id,
+                    'depot_id' => $transfer->to_depot_id,
+                    'items_count' => $transfer->items_count,
+                    'restored_items' => $restoredItems,
+                ],
+                'new_values'  => null,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('audit_log.transfer_delete_failed', ['error' => $e->getMessage()]);
+        }
+
+        // Restore stocks to original location (pharmacy)
+        $restoredCount = 0;
+        foreach ($transfer->items as $item) {
+            $unit = $item->drugUnit;
+            if (! $unit) {
+                continue;
+            }
+
+            // Check if this was a partial transfer
+            // Partial transfer indicators:
+            // 1. Unit is at depot with status 'en_stock'
+            // 2. Unit's current quantity equals the transferred quantity (unit was created for this transfer)
+            // 3. Unit barcode has a suffix (format: ORIGINAL-XXXXXX)
+            $barcodeParts = explode('-', $unit->barcode);
+            $hasBarcodeSuffix = count($barcodeParts) > 1 && strlen(end($barcodeParts)) >= 6;
+            $isPartialTransfer = $unit->current_location_type === 'depot'
+                && $unit->quantite_actuelle == $item->quantity
+                && $hasBarcodeSuffix;
+
+            if ($isPartialTransfer) {
+                // This is a partial transfer - find the source unit at pharmacy
+                $originalBarcode = $barcodeParts[0];
+
+                // Find the source unit at pharmacy by matching drug_id and original barcode
+                $sourceUnit = DrugUnit::where('drug_id', $unit->drug_id)
+                    ->where('current_location_type', 'pharmacy')
+                    ->where(function ($q) use ($originalBarcode, $unit) {
+                        $q->where('barcode', $originalBarcode)
+                          ->orWhere('barcode', 'like', $originalBarcode . '-%');
+                    })
+                    ->where('id', '!=', $unit->id)
+                    ->first();
+
+                if ($sourceUnit) {
+                    // Restore quantity to source unit
+                    $sourceUnit->increment('quantite_actuelle', $item->quantity);
+
+                    // Log the restoration
+                    StockMovement::create([
+                        'drug_unit_id' => $sourceUnit->id,
+                        'transfer_id'  => $transfer->id,
+                        'from_type'    => 'depot',
+                        'from_id'      => $transfer->to_depot_id,
+                        'to_type'      => 'pharmacy',
+                        'to_id'        => $transfer->from_pharmacy_id,
+                        'action'       => 'return_quantity',
+                        'quantity'     => $item->quantity,
+                        'performed_by' => $user->id,
+                        'performed_at' => now(),
+                    ]);
+
+                    // Delete the depot unit (it was created for this partial transfer)
+                    $unit->delete();
+                    $restoredCount++;
+                    continue;
+                }
+
+                // If source unit not found, fallback to moving the unit back to pharmacy
+                Log::warning('transfer.destroy.partial_source_not_found', [
+                    'transfer_id' => $transfer->id,
+                    'unit_id' => $unit->id,
+                    'barcode' => $unit->barcode,
+                    'original_barcode' => $originalBarcode,
+                ]);
+            }
+
+            // For full transfers or when source unit not found: move unit back to pharmacy
+            $unit->update([
+                'current_location_type' => 'pharmacy',
+                'current_location_id'   => $transfer->from_pharmacy_id,
+                'status'                => 'en_stock',
+            ]);
+
+            // Log the stock restoration movement
+            StockMovement::create([
+                'drug_unit_id' => $unit->id,
+                'transfer_id'  => $transfer->id,
+                'from_type'    => 'depot',
+                'from_id'      => $transfer->to_depot_id,
+                'to_type'      => 'pharmacy',
+                'to_id'        => $transfer->from_pharmacy_id,
+                'action'       => 'return',
+                'performed_by' => $user->id,
+                'performed_at' => now(),
+            ]);
+
+            $restoredCount++;
+        }
+
+        // Delete the transfer (items will be deleted via cascade or foreign key)
         $transfer->delete();
 
-        return redirect()->route('transfers.index')->with('success', 'Transfert supprimé avec succès.');
+        $message = "Transfert supprimé avec succès. {$restoredCount} article(s) retourné(s) à la pharmacie.";
+
+        return redirect()->route('transfers.index')->with('success', $message);
     }
 
     public function show(Transfer $transfer)
@@ -290,7 +426,9 @@ class TransferController extends Controller
         $depot = Depot::findOrFail($validated['depot_id']);
 
         // Resolve drug_unit_ids — support barcode string or numeric ID
-        $resolvedItems = collect($validated['items'])->map(function ($item) {
+        // Check for expired units and log warnings
+        $expiredWarnings = [];
+        $resolvedItems = collect($validated['items'])->map(function ($item) use (&$expiredWarnings) {
             $value    = $item['drug_unit_id'];
             $quantity = (int) $item['quantity'];
 
@@ -303,7 +441,19 @@ class TransferController extends Controller
                 ]);
             }
 
-            return ['drug_unit_id' => $unit->id, 'quantity' => $quantity];
+            // Check if unit is expired and log warning
+            if ($unit->expiration_date && $unit->expiration_date->isPast()) {
+                $warning = "ALERTE: L'unité {$unit->barcode} ({$unit->drug?->name}) est périmée depuis {$unit->expiration_date->format('d/m/Y')}. Elle sera marquée comme 'à détruire'.";
+                $expiredWarnings[] = $warning;
+                Log::warning('transfer.expired_unit', [
+                    'barcode' => $unit->barcode,
+                    'drug_name' => $unit->drug?->name,
+                    'expiration_date' => $unit->expiration_date->toDateString(),
+                    'depot_id' => $depot->id,
+                ]);
+            }
+
+            return ['drug_unit_id' => $unit->id, 'quantity' => $quantity, 'is_expired' => ($unit->expiration_date && $unit->expiration_date->isPast())];
         })->all();
 
         try {
@@ -346,16 +496,23 @@ class TransferController extends Controller
             }
 
             $message = "Transfert effectué : {$count} article(s) vers {$depot->name}.";
+            
+            // Add expired warnings to message if any
+            if (!empty($expiredWarnings)) {
+                $message .= " ATTENTION: " . count($expiredWarnings) . " unité(s) périmée(s) marquée(s) comme 'à détruire'.";
+            }
 
             if ($request->expectsJson()) {
                 return response()->json([
                     'success'     => true,
                     'message'     => $message,
                     'transfer_id' => $transfer->id,
+                    'transfer_uuid' => $transfer->uuid,
+                    'warnings'    => $expiredWarnings,
                 ]);
             }
 
-            return redirect()->route('transfers.show', $transfer->id)->with('success', $message);
+            return redirect()->route('transfers.show', $transfer->uuid)->with('success', $message)->with('warnings', $expiredWarnings);
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {

@@ -1,3 +1,143 @@
+@import './design-system.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ============================================
+   TAILWIND CUSTOM UTILITIES
+   ============================================ */
+
+@layer utilities {
+  /* Animation utilities */
+  .animate-fade-in {
+    animation: fadeIn var(--duration-normal) var(--ease-out-quart);
+  }
+  
+  .animate-fade-in-up {
+    animation: fadeInUp var(--duration-normal) var(--ease-out-quart);
+  }
+  
+  .animate-fade-in-down {
+    animation: fadeInDown var(--duration-normal) var(--ease-out-quart);
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn var(--duration-normal) var(--ease-out-quart);
+  }
+  
+  .animate-slide-in-right {
+    animation: slideInRight var(--duration-normal) var(--ease-out-quart);
+  }
+  
+  .animate-slide-in-left {
+    animation: slideInLeft var(--duration-normal) var(--ease-out-quart);
+  }
+  
+  .animate-pulse-soft {
+    animation: pulse 2s var(--ease-in-out) infinite;
+  }
+  
+  .animate-bounce-subtle {
+    animation: bounceSubtle 2s var(--ease-in-out) infinite;
+  }
+  
+  .animate-shimmer {
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+  }
+  
+  .animate-spin-slow {
+    animation: spin 3s linear infinite;
+  }
+  
+  /* Transition utilities */
+  .transition-transform-opacity {
+    transition-property: transform, opacity;
+    transition-timing-function: var(--ease-out-quart);
+    transition-duration: var(--duration-normal);
+  }
+  
+  .transition-colors-transform {
+    transition-property: color, background-color, border-color, transform;
+    transition-timing-function: var(--ease-out-quart);
+    transition-duration: var(--duration-normal);
+  }
+  
+  /* Hover lift effect */
+  .hover-lift {
+    transition: transform var(--duration-normal) var(--ease-out-quart),
+                box-shadow var(--duration-normal) var(--ease-out-quart);
+  }
+  
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+  
+  /* Hover scale effect */
+  .hover-scale {
+    transition: transform var(--duration-normal) var(--ease-out-quart);
+  }
+  
+  .hover-scale:hover {
+    transform: scale(1.02);
+  }
+  
+  /* Focus ring */
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--color-primary-500);
+    outline-offset: 2px;
+  }
+  
+  /* Glass morphism */
+  .glass {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border-light);
+  }
+  
+  /* Text gradient */
+  .text-gradient {
+    background: linear-gradient(135deg, var(--color-primary-500), var(--color-secondary-500));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  /* Stagger animations for lists */
+  .stagger-children > * {
+    opacity: 0;
+    animation: fadeInUp var(--duration-normal) var(--ease-out-quart) forwards;
+  }
+  
+  .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger-children > *:nth-child(2) { animation-delay: 50ms; }
+  .stagger-children > *:nth-child(3) { animation-delay: 100ms; }
+  .stagger-children > *:nth-child(4) { animation-delay: 150ms; }
+  .stagger-children > *:nth-child(5) { animation-delay: 200ms; }
+  .stagger-children > *:nth-child(6) { animation-delay: 250ms; }
+  .stagger-children > *:nth-child(7) { animation-delay: 300ms; }
+  .stagger-children > *:nth-child(8) { animation-delay: 350ms; }
+  .stagger-children > *:nth-child(9) { animation-delay: 400ms; }
+  .stagger-children > *:nth-child(10) { animation-delay: 450ms; }
+  
+  /* Stagger faster */
+  .stagger-fast > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger-fast > *:nth-child(2) { animation-delay: 30ms; }
+  .stagger-fast > *:nth-child(3) { animation-delay: 60ms; }
+  .stagger-fast > *:nth-child(4) { animation-delay: 90ms; }
+  .stagger-fast > *:nth-child(5) { animation-delay: 120ms; }
+  .stagger-fast > *:nth-child(6) { animation-delay: 150ms; }
+  .stagger-fast > *:nth-child(7) { animation-delay: 180ms; }
+  .stagger-fast > *:nth-child(8) { animation-delay: 210ms; }
+  
+  /* Loading skeleton */
+  .skeleton {
+    background: linear-gradient(90deg, var(--color-gray-200) 25%, var(--color-gray-100) 50%, var(--color-gray-200) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+}

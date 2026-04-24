@@ -50,6 +50,15 @@ Sys E-Dépôt Pharma est une application web de gestion de stock pharmaceutique 
 > Compte par défaut du super admin : `mikbossou@gmail.com` / `Admin@1234`
 > **Changer le mot de passe dès la première connexion.**
 
+### Verrouillage de session
+
+Pour des raisons de sécurité, la session se verrouille automatiquement après **15 minutes d'inactivité**.
+
+- Écran de verrouillage s'affiche
+- Saisir son mot de passe pour déverrouiller
+- **5 tentatives maximum** avant déconnexion forcée
+- Le verrouillage persiste même en cas d'actualisation de la page
+
 ### Modifier son profil
 
 Accessible via le menu en haut à droite → **Mon Profil**
@@ -57,6 +66,26 @@ Accessible via le menu en haut à droite → **Mon Profil**
 - Modifier son nom et son email
 - Changer son mot de passe
 - Changer de pharmacie active (si rattaché à plusieurs)
+- **Super Admin uniquement** : Exporter la base de données SQL (ouvre dans un nouvel onglet)
+
+---
+
+### Navigation
+
+Le menu principal est organisé de manière compacte avec icônes uniquement par défaut :
+
+| Icône | Menu | Description |
+|-------|------|-------------|
+| 🏠 | Tableau de bord | Vue d'ensemble et statistiques |
+| 💊 | Médicaments | Catalogue des produits |
+| 📦 | Stock | Gestion des unités physiques |
+| ↔️ | Transferts | Mouvements entre emplacements |
+| 🛒 | Ventes | Historique et enregistrement |
+| 📊 | Statistiques | Rapports analytiques |
+| 💼 | **Gestion** | Menu déroulant : Décaissements, Catégories, Dépôts |
+| ⚙️ | Administration | Menu déroulant : Utilisateurs, Rôles, Permissions |
+
+> **Astuce** : Survolez une icône pour afficher son libellé. Les menus déroulants s'ouvrent au clic et se ferment automatiquement lorsqu'un autre s'ouvre.
 
 ---
 
@@ -66,6 +95,8 @@ Le super administrateur a accès à l'intégralité du système, toutes pharmaci
 
 ### Tableau de bord
 
+- **Statistiques dynamiques** : Données réelles des ventes sur 7 jours et répartition par catégorie
+- **Stock par emplacement** : Comparaison visuelle entre Pharmacie et Dépôts
 - Vue consolidée : stock total, ventes du jour, alertes de stock bas
 - Accès à toutes les pharmacies sans restriction
 
@@ -160,14 +191,17 @@ Le super administrateur a accès à l'intégralité du système, toutes pharmaci
 | Scanner un médicament | Recherche par code-barres ou nom |
 | Imprimer un reçu | Ticket de caisse détaillé |
 
-### Catégories
+### Gestion (Menu déroulant)
 
-**Menu : Catégories**
+**Menu : 💼 Gestion**
 
-| Action | Description |
-|--------|-------------|
-| Voir les catégories | Liste des catégories de médicaments |
-| Créer une catégorie | Ajouter une nouvelle catégorie |
+Ce menu regroupe les fonctions administratives courantes :
+
+| Sous-menu | Description |
+|-----------|-------------|
+| **Décaissements** | Suivi des sorties de caisse et dépenses |
+| **Catégories** | Gestion des catégories de médicaments |
+| **Dépôts** | Administration des dépôts secondaires |
 
 ### Statistiques
 
@@ -200,11 +234,10 @@ Accès limité à **sa propre pharmacie** et ses dépôts.
 | Module | Actions disponibles |
 |--------|-------------------|
 | **Médicaments** | Voir, créer, modifier, supprimer |
-| **Catégories** | Voir, créer |
+| **💼 Gestion** | Accès complet aux sous-menus : Décaissements, Catégories, Dépôts |
 | **Stock** | Voir, entrée de stock, rapport journalier |
 | **Transferts** | Créer, voir, imprimer bon |
 | **Ventes** | Voir historique, enregistrer, imprimer reçu |
-| **Dépôts** | Créer, modifier, activer reçus/stats, supprimer |
 | **Utilisateurs** | Créer, modifier, supprimer (de sa pharmacie) |
 | **Statistiques** | Voir et imprimer |
 | **Demandes de stock** | Voir, valider, refuser |
@@ -227,7 +260,7 @@ Employé travaillant au niveau de la pharmacie principale (pas d'un dépôt spé
 | Module | Actions disponibles |
 |--------|-------------------|
 | **Médicaments** | Voir, créer *(pas de suppression ni modification)* |
-| **Catégories** | Voir uniquement |
+| **💼 Gestion** | Accès limité : voir Catégories, voir Dépôts *(pas de création/modification)* |
 | **Stock** | Voir, entrée de stock, rapport journalier |
 | **Transferts** | Voir, créer, imprimer bon |
 | **Ventes** | Enregistrer une vente, voir l'historique, imprimer reçu |
@@ -354,15 +387,18 @@ Accessibles depuis le pied de page (même sans être connecté) :
 | Créer médicament | ✅ | ✅ | ✅ | ❌ |
 | Modifier médicament | ✅ | ✅ | ❌ | ❌ |
 | Supprimer médicament | ✅ | ✅ | ❌ | ❌ |
-| Voir catégories | ✅ | ✅ | ✅ | ❌ |
-| Créer catégorie | ✅ | ✅ | ❌ | ❌ |
+| 💼 **Menu Gestion** | ✅ | ✅ | ✅ (lecture) | ❌ |
+| — Décaissements | ✅ | ✅ | ❌ | ❌ |
+| — Catégories (créer) | ✅ | ✅ | ❌ | ❌ |
+| — Catégories (voir) | ✅ | ✅ | ✅ | ❌ |
+| — Dépôts (gérer) | ✅ | ✅ | ❌ | ❌ |
+| — Dépôts (voir) | ✅ | ✅ | ✅ | ❌ |
 | Voir stock | ✅ | ✅ | ✅ | ✅ (son dépôt) |
 | Entrée de stock | ✅ | ✅ | ✅ | ❌ |
 | Transfert de stock | ✅ | ✅ | ✅ | ❌ |
 | Vendre | ✅ | ✅ | ✅ | ✅ |
 | Voir statistiques | ✅ | ✅ | ✅ | ❌ |
 | Demandes de stock | ✅ | ✅ | ✅ | ✅ |
-| Gérer dépôts | ✅ | ✅ | ❌ | ❌ |
 | Gérer utilisateurs | ✅ | ✅ | ❌ | ❌ |
 | Gérer rôles | ✅ | ❌ | ❌ | ❌ |
 | Paramètres pharmacie | ✅ | ✅ | ❌ | ❌ |

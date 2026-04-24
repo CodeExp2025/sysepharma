@@ -6,22 +6,32 @@ import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createApp, h } from 'vue';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+const appName = import.meta.env.VITE_APP_NAME || 'Sys E-Dépôt Pharma';
 
 createInertiaApp({
-    title: (title) => `${title} - ${appName}`,
+    title: (title) => title ? `${title} — ${appName}` : appName,
     resolve: (name) =>
         resolvePageComponent(
             `./Pages/${name}.vue`,
             import.meta.glob('./Pages/**/*.vue'),
         ),
     setup({ el, App, props, plugin }) {
-        return createApp({ render: () => h(App, props) })
+        const app = createApp({ render: () => h(App, props) });
+        
+        // Global properties for design system
+        app.config.globalProperties.$design = {
+            animationDuration: 200,
+            easing: 'cubic-bezier(0.25, 1, 0.5, 1)'
+        };
+        
+        return app
             .use(plugin)
             .use(ZiggyVue)
             .mount(el);
     },
     progress: {
-        color: '#4B5563',
+        color: '#3b82f6',
+        showSpinner: true,
+        includeCSS: true,
     },
 });

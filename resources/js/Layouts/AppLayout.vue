@@ -12,6 +12,24 @@ const props = defineProps({ title: String });
 
 const showingNavigationDropdown = ref(false);
 const showAdminMenu = ref(false);
+const showManagementMenu = ref(false);
+
+// Close other dropdowns when one opens
+const toggleAdminMenu = () => {
+    showAdminMenu.value = !showAdminMenu.value;
+    if (showAdminMenu.value) showManagementMenu.value = false;
+};
+
+const toggleManagementMenu = () => {
+    showManagementMenu.value = !showManagementMenu.value;
+    if (showManagementMenu.value) showAdminMenu.value = false;
+};
+
+// Close dropdowns when clicking outside
+const closeAllDropdowns = () => {
+    showAdminMenu.value = false;
+    showManagementMenu.value = false;
+};
 
 const page = usePage();
 const user = computed(() => page.props.auth.user);
@@ -62,11 +80,15 @@ const mainNavItems = [
         icon: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z'
     },
     {
-        name: 'Statistiques',
+        name: 'Stats',
         route: 'stats.index',
         permissions: ['view_reports'],
         icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'
-    },
+    }
+];
+
+// Management items moved to separate dropdown
+const managementNavItems = [
     {
         name: 'Décaissements',
         route: 'disbursements.index',
@@ -74,6 +96,20 @@ const mainNavItems = [
         permissions: [],
         roles: ['super_admin', 'pharmacy_admin'],
         icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z'
+    },
+    { 
+        name: 'Catégories', 
+        route: 'categories.index',
+        match: 'categories.*',
+        permissions: ['view_category', 'create_category'],
+        icon: 'M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z'
+    },
+    { 
+        name: 'Dépôts', 
+        route: 'depots.index',
+        match: 'depots.*',
+        permissions: ['create_depot'],
+        icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4'
     }
 ];
 
@@ -135,6 +171,13 @@ const visibleMainNavItems = computed(() => {
 
 const visibleAdminNavItems = computed(() => {
     return adminNavItems.filter((item) => {
+        if (item.roles && !item.roles.some(r => roles.value.includes(r))) return false;
+        return hasAnyPermission(item.permissions);
+    });
+});
+
+const visibleManagementNavItems = computed(() => {
+    return managementNavItems.filter((item) => {
         if (item.roles && !item.roles.some(r => roles.value.includes(r))) return false;
         return hasAnyPermission(item.permissions);
     });
@@ -259,8 +302,10 @@ onUnmounted(() => {
                                     <span class="brand-subtitle">Lumière Afrique Group Sarl</span>
                                 </div>
                             </Link>
+                        </div>
 
-                            <!-- Desktop Navigation -->
+                        <!-- Desktop Navigation - Centered/Right aligned -->
+                        <div class="navbar-nav" @click="closeAllDropdowns">
                             <div class="desktop-nav">
                                 <NavLink 
                                     v-for="item in visibleMainNavItems" 
@@ -275,10 +320,42 @@ onUnmounted(() => {
                                     <span>{{ item.name }}</span>
                                 </NavLink>
 
-                                <!-- Admin Dropdown -->
-                                <div v-if="visibleAdminNavItems.length" class="admin-dropdown">
+                                <!-- Management Dropdown -->
+                                <div v-if="visibleManagementNavItems.length" class="admin-dropdown management-dropdown" @click.stop>
                                     <button 
-                                        @click="showAdminMenu = !showAdminMenu"
+                                        @click="toggleManagementMenu"
+                                        class="nav-link admin-trigger"
+                                        :class="{ 'active': showManagementMenu }"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                        </svg>
+                                        <span>Gestion</span>
+                                        <svg class="dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                        </svg>
+                                    </button>
+
+                                    <div v-if="showManagementMenu" class="admin-dropdown-menu">
+                                        <NavLink 
+                                            v-for="item in visibleManagementNavItems" 
+                                            :key="item.route"
+                                            :href="route(item.route)" 
+                                            :active="route().current(item.match || item.route)"
+                                            class="dropdown-item"
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="item.icon"/>
+                                            </svg>
+                                            <span>{{ item.name }}</span>
+                                        </NavLink>
+                                    </div>
+                                </div>
+
+                                <!-- Admin Dropdown -->
+                                <div v-if="visibleAdminNavItems.length" class="admin-dropdown" @click.stop>
+                                    <button 
+                                        @click="toggleAdminMenu"
                                         class="nav-link admin-trigger"
                                         :class="{ 'active': showAdminMenu }"
                                     >
@@ -405,16 +482,17 @@ onUnmounted(() => {
                                     </DropdownLink>
 
                                     <!-- Export Database SQL (super_admin only) -->
-                                    <DropdownLink
+                                    <a
                                         v-if="roles.includes('super_admin')"
                                         :href="route('profile.export-database-sql')"
+                                        target="_blank"
                                         class="dropdown-link"
                                     >
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
                                         </svg>
                                         <span>Exporter la base SQL</span>
-                                    </DropdownLink>
+                                    </a>
 
                                     <div class="dropdown-divider"></div>
 
@@ -507,16 +585,17 @@ onUnmounted(() => {
                                 </svg>
                                 <span>Mon Profil</span>
                             </ResponsiveNavLink>
-                            <ResponsiveNavLink
+                            <a
                                 v-if="roles.includes('super_admin')"
                                 :href="route('profile.export-database-sql')"
+                                target="_blank"
                                 class="mobile-nav-link"
                             >
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/>
                                 </svg>
                                 <span>Exporter la base SQL</span>
-                            </ResponsiveNavLink>
+                            </a>
                             <ResponsiveNavLink :href="route('logout')" method="post" as="button" class="mobile-nav-link logout">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
@@ -612,12 +691,30 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* Navbar */
+/* Design Tokens - CSS Variables for consistency */
+:root {
+    --nav-primary: #3b82f6;
+    --nav-primary-light: rgba(59, 130, 246, 0.08);
+    --nav-primary-gradient: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(139, 92, 246, 0.15));
+    --nav-text: #4b5563;
+    --nav-text-muted: #6b7280;
+    --nav-bg-hover: rgba(59, 130, 246, 0.06);
+    --nav-radius: 0.5rem;
+    --nav-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    --nav-shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.12);
+    
+    /* Animation easings */
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+    --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Navbar - More compact and refined */
 .navbar {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    box-shadow: var(--nav-shadow);
     position: sticky;
     top: 0;
     z-index: 50;
@@ -626,120 +723,211 @@ onUnmounted(() => {
 .navbar-container {
     max-width: 90rem;
     margin: 0 auto;
-    padding: 0 1rem;
+    padding: 0 1.25rem;
 }
 
 .navbar-content {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    height: 4.5rem;
+    height: 3.25rem; /* Further reduced for compactness */
 }
 
 .navbar-left {
     display: flex;
     align-items: center;
-    gap: 2rem;
+    gap: 0.75rem; /* Reduced from 1.25rem */
+    flex-shrink: 0;
 }
 
-/* Brand */
+/* Navigation container - fills space and aligns right */
+.navbar-nav {
+    display: none;
+    flex: 1;
+    justify-content: flex-end;
+    align-items: center;
+    margin: 0 1rem;
+}
+
+@media (min-width: 1024px) {
+    .navbar-nav {
+        display: flex;
+        margin: 0 0.5rem;
+    }
+}
+
+@media (min-width: 1280px) {
+    .navbar-nav {
+        margin: 0 1.5rem;
+    }
+    
+    .nav-link {
+        padding: 0.5rem 0.375rem;
+    }
+    
+    .nav-link:hover,
+    .nav-link.active {
+        padding: 0.5rem 0.75rem;
+    }
+}
+
+@media (min-width: 1536px) {
+    .navbar-container {
+        padding: 0 2rem;
+    }
+}
+
+/* Brand - More compact */
 .brand {
     display: flex;
     align-items: center;
-    gap: 0.875rem;
+    gap: 0.625rem;
     text-decoration: none;
-    padding: 0.5rem;
-    border-radius: 0.75rem;
-    transition: all 150ms;
+    padding: 0.375rem 0.5rem;
+    border-radius: var(--nav-radius);
+    transition: all 200ms var(--ease-out-quart);
 }
 
 .brand:hover {
-    background: rgba(59, 130, 246, 0.05);
+    background: var(--nav-bg-hover);
+    transform: translateY(-1px);
 }
 
 .brand-logo {
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 2.25rem;
+    height: 2.25rem;
     background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-    border-radius: 0.625rem;
+    border-radius: 0.5rem;
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
     flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+    transition: transform 200ms var(--ease-out-quart), box-shadow 200ms var(--ease-out-quart);
+}
+
+.brand:hover .brand-logo {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
 }
 
 .brand-logo svg {
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 1.25rem;
+    height: 1.25rem;
 }
 
 .brand-text {
     display: flex;
     flex-direction: column;
+    gap: 0.125rem;
 }
 
 .brand-name {
-    font-size: 1.125rem;
+    font-size: 1rem;
     font-weight: 700;
     background: linear-gradient(135deg, #3b82f6, #8b5cf6);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
     line-height: 1.2;
+    letter-spacing: -0.01em;
 }
 
 .brand-subtitle {
-    font-size: 0.6875rem;
-    color: #6b7280;
+    font-size: 0.625rem;
+    color: var(--nav-text-muted);
     font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
 }
 
-/* Desktop Nav */
+/* Desktop Nav - Compact pill-style navigation */
 .desktop-nav {
-    display: none;
+    display: flex;
     align-items: center;
-    gap: 0.5rem;
-}
-
-@media (min-width: 1024px) {
-    .desktop-nav {
-        display: flex;
-    }
+    gap: 0.125rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .nav-link {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.625rem 1rem;
-    font-size: 0.875rem;
+    gap: 0;
+    padding: 0.5rem;
+    font-size: 0.75rem;
     font-weight: 500;
-    color: #6b7280;
+    color: var(--nav-text-muted);
     text-decoration: none;
-    border-radius: 0.5rem;
-    transition: all 150ms;
+    border-radius: var(--nav-radius);
+    transition: all 200ms var(--ease-out-quart);
     white-space: nowrap;
+    position: relative;
+    letter-spacing: -0.01em;
+    overflow: hidden;
 }
 
 .nav-link svg {
-    width: 1.125rem;
-    height: 1.125rem;
+    width: 1rem;
+    height: 1rem;
     flex-shrink: 0;
+    transition: transform 200ms var(--ease-out-quart);
+}
+
+.nav-link span {
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-width 300ms var(--ease-out-quart), opacity 200ms var(--ease-out-quart), margin-left 200ms var(--ease-out-quart);
+    margin-left: 0;
 }
 
 .nav-link:hover {
-    background: rgba(59, 130, 246, 0.08);
-    color: #3b82f6;
+    background: var(--nav-primary-light);
+    color: var(--nav-primary);
+    transform: translateY(-1px);
+    padding: 0.5rem 0.625rem;
+}
+
+.nav-link:hover span {
+    max-width: 200px;
+    opacity: 1;
+    margin-left: 0.375rem;
+}
+
+.nav-link:hover svg {
+    transform: scale(1.1);
 }
 
 .nav-link.active {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(139, 92, 246, 0.15));
-    color: #3b82f6;
+    background: var(--nav-primary-gradient);
+    color: var(--nav-primary);
     font-weight: 600;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+    padding: 0.5rem 0.625rem;
 }
 
-/* Admin Dropdown */
+.nav-link.active span {
+    max-width: 200px;
+    opacity: 1;
+    margin-left: 0.375rem;
+}
+
+.nav-link.active::before {
+    content: '';
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    background: var(--nav-primary);
+    border-radius: 50%;
+    opacity: 0.5;
+}
+
+/* Admin Dropdown - Enhanced with smooth animations */
 .admin-dropdown {
     position: relative;
 }
@@ -748,11 +936,28 @@ onUnmounted(() => {
     position: relative;
 }
 
-.dropdown-arrow {
-    width: 1rem;
-    height: 1rem;
+/* Dropdown triggers show text/arrow on hover like other nav links */
+.nav-link.admin-trigger .dropdown-arrow {
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-width 300ms var(--ease-out-quart), opacity 200ms var(--ease-out-quart), margin-left 200ms var(--ease-out-quart);
+    margin-left: 0;
+}
+
+.nav-link.admin-trigger:hover .dropdown-arrow,
+.nav-link.admin-trigger.active .dropdown-arrow {
+    max-width: 200px;
+    opacity: 1;
     margin-left: 0.25rem;
-    transition: transform 150ms;
+}
+
+.dropdown-arrow {
+    width: 0.75rem;
+    height: 0.75rem;
+    margin-left: 0.125rem;
+    transition: transform 250ms var(--ease-out-quint);
+    flex-shrink: 0;
 }
 
 .admin-trigger.active .dropdown-arrow {
@@ -761,70 +966,108 @@ onUnmounted(() => {
 
 .admin-dropdown-menu {
     position: absolute;
-    top: calc(100% + 0.5rem);
-    left: 0;
-    min-width: 12rem;
-    background: white;
-    border-radius: 0.75rem;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-    border: 1px solid rgba(0, 0, 0, 0.05);
-    padding: 0.5rem;
+    top: calc(100% + 0.375rem);
+    right: 0;
+    left: auto;
+    min-width: 10rem;
+    background: rgba(255, 255, 255, 0.98);
+    border-radius: 0.625rem;
+    box-shadow: var(--nav-shadow-lg);
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    padding: 0.25rem;
     z-index: 50;
-    animation: slideDown 200ms ease-out;
+    animation: dropdownEnter 250ms var(--ease-out-quart);
+    transform-origin: top right;
 }
 
-@keyframes slideDown {
+@keyframes dropdownEnter {
     from {
         opacity: 0;
-        transform: translateY(-10px);
+        transform: translateY(-8px) scale(0.96);
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(0) scale(1);
     }
 }
 
 .dropdown-item {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.625rem 0.875rem;
-    font-size: 0.875rem;
-    color: #4b5563;
+    gap: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    font-size: 0.75rem;
+    color: var(--nav-text);
     text-decoration: none;
-    border-radius: 0.5rem;
-    transition: all 150ms;
+    border-radius: calc(var(--nav-radius) - 0.125rem);
+    transition: all 180ms var(--ease-out-quart);
     width: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+.dropdown-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%) scaleY(0);
+    width: 3px;
+    height: 60%;
+    background: var(--nav-primary);
+    border-radius: 0 2px 2px 0;
+    transition: transform 180ms var(--ease-out-quart);
 }
 
 .dropdown-item svg {
-    width: 1.125rem;
-    height: 1.125rem;
+    width: 1rem;
+    height: 1rem;
     flex-shrink: 0;
+    color: var(--nav-text-muted);
+    transition: all 180ms var(--ease-out-quart);
 }
 
 .dropdown-item:hover {
-    background: rgba(59, 130, 246, 0.08);
-    color: #3b82f6;
+    background: var(--nav-primary-light);
+    color: var(--nav-primary);
+    padding-left: 0.75rem;
+}
+
+.dropdown-item:hover::before {
+    transform: translateY(-50%) scaleY(1);
+}
+
+.dropdown-item:hover svg {
+    color: var(--nav-primary);
+    transform: scale(1.1);
 }
 
 .dropdown-item.active {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(139, 92, 246, 0.15));
-    color: #3b82f6;
+    background: var(--nav-primary-gradient);
+    color: var(--nav-primary);
     font-weight: 600;
 }
 
-/* Notifications */
+.dropdown-item.active::before {
+    transform: translateY(-50%) scaleY(1);
+    opacity: 0.5;
+}
+
+.dropdown-item.active svg {
+    color: var(--nav-primary);
+}
+
+/* Notifications - Compact and refined */
 .notif-trigger {
     display: none;
     position: relative;
-    width: 2.75rem;
-    height: 2.75rem;
+    width: 2.5rem;
+    height: 2.5rem;
     background: white;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    border-radius: 0.75rem;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 50%;
     cursor: pointer;
-    transition: all 150ms;
+    transition: all 200ms var(--ease-out-quart);
     align-items: center;
     justify-content: center;
 }
@@ -836,59 +1079,67 @@ onUnmounted(() => {
 }
 
 .notif-trigger:hover {
-    background: rgba(59, 130, 246, 0.05);
-    border-color: rgba(59, 130, 246, 0.2);
+    background: var(--nav-bg-hover);
+    border-color: rgba(59, 130, 246, 0.25);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
 }
 
 .notif-bell {
-    width: 1.25rem;
-    height: 1.25rem;
-    color: #6b7280;
+    width: 1.125rem;
+    height: 1.125rem;
+    color: var(--nav-text-muted);
+    transition: all 200ms var(--ease-out-quart);
 }
 
 .notif-trigger:hover .notif-bell {
-    color: #3b82f6;
+    color: var(--nav-primary);
+    transform: scale(1.1);
 }
 
 .notif-badge {
     position: absolute;
-    top: -0.25rem;
-    right: -0.25rem;
-    min-width: 1.25rem;
-    height: 1.25rem;
+    top: -0.125rem;
+    right: -0.125rem;
+    min-width: 1.125rem;
+    height: 1.125rem;
     padding: 0 0.25rem;
     border-radius: 9999px;
     background: #ef4444;
     color: white;
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     font-weight: 700;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 6px 16px rgba(239, 68, 68, 0.35);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+    transition: transform 200ms var(--ease-out-quart);
+}
+
+.notif-trigger:hover .notif-badge {
+    transform: scale(1.05);
 }
 
 .notif-pulse .notif-bell {
-    animation: bellShake 700ms ease-in-out;
+    animation: bellShake 600ms var(--ease-out-quart);
 }
 
 .notif-pulse .notif-badge {
-    animation: badgePop 700ms ease-in-out;
+    animation: badgePop 400ms var(--ease-out-quint);
 }
 
 @keyframes bellShake {
     0% { transform: rotate(0deg); }
-    15% { transform: rotate(12deg); }
-    30% { transform: rotate(-12deg); }
-    45% { transform: rotate(9deg); }
-    60% { transform: rotate(-9deg); }
-    75% { transform: rotate(6deg); }
+    20% { transform: rotate(10deg); }
+    40% { transform: rotate(-10deg); }
+    60% { transform: rotate(6deg); }
+    80% { transform: rotate(-4deg); }
     100% { transform: rotate(0deg); }
 }
 
 @keyframes badgePop {
     0% { transform: scale(1); }
-    40% { transform: scale(1.25); }
+    50% { transform: scale(1.2); }
     100% { transform: scale(1); }
 }
 
@@ -1405,5 +1656,30 @@ padding: 1rem 0.75rem;
 @media (max-width: 640px) {
 .footer-legal-grid { gap: 0.375rem 1.25rem; }
 .footer-links { gap: 0.2rem; }
+}
+
+/* Accessibility - Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+    
+    .brand:hover,
+    .brand:hover .brand-logo,
+    .nav-link:hover,
+    .nav-link:hover svg,
+    .dropdown-item:hover,
+    .dropdown-item:hover svg {
+        transform: none !important;
+    }
+    
+    .admin-dropdown-menu {
+        animation: none !important;
+    }
 }
 </style>

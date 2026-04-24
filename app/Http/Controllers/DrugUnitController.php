@@ -6,6 +6,7 @@ use App\Models\Depot;
 use App\Models\Drug;
 use App\Models\DrugUnit;
 use App\Models\Sale;
+use App\Models\Transfer;
 use App\Services\StockService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -307,5 +308,138 @@ class DrugUnitController extends Controller
         $drugUnit->delete();
 
         return redirect()->back()->with('success', 'Unité supprimée avec succès.');
+    }
+
+    /**
+     * Get stock content with transfer traceability for the current location.
+     */
+    public function stockContent(Request $request)
+    {
+        $user         = $request->user();
+        $isSuperAdmin = $user->hasRole('super_admin');
+        $canViewAll   = $user->hasAnyRole(['super_admin', 'pharmacy_admin', 'pharmacy_staff']);
+
+        $scope   = $request->query('scope', $canViewAll ? 'all' : 'pharmacy');
+        $depotId = $request->query('depot_id');
+
+        // Build base query for drug units based on scope
+        $unitsQuery = DrugUnit::query()
+            ->with('drug.category')
+            ->where('status', 'en_stock');
+
+        if (! $isSuperAdmin && $user->pharmacy_id) {
+            $pharmacyDepotIds = Depot::where('pharmacy_id', $user->pharmacy_id)->pluck('id');
+            $unitsQuery->where(function ($q) use ($user, $pharmacyDepotIds) {
+                $q->where(function ($q2) use ($user) {
+                    $q2->where('current_location_type', 'pharmacy')
+                       ->where('current_location_id', $user->pharmacy_id);
+                })->orWhere(function ($q2) use ($pharmacyDepotIds) {
+                    $q2->where('current_location_type', 'depot')
+                       ->whereIn('current_location_id', $pharmacyDepotIds);
+                });
+            });
+        }
+
+        // Apply scope filter
+        if ($scope === 'pharmacy') {
+            $unitsQuery->where('current_location_type', 'pharmacy');
+            if (! $isSuperAdmin) {
+                $unitsQuery->where('current_location_id', $user->pharmacy_id);
+            }
+        } elseif ($scope === 'depot' && $depotId) {
+            $unitsQuery->where('current_location_type', 'depot')
+                       ->where('current_location_id', $depotId);
+        } elseif ($scope === 'depot' && $user->depot_id) {
+            $unitsQuery->where('current_location_type', 'depot')
+                       ->where('current_location_id', $user->depot_id);
+        }
+
+        $units = $unitsQuery->get();
+
+        // Aggregate stock content by drug
+        $stockContent = $units->groupBy('drug_id')->map(function ($drugUnits) {
+            $drug = $drugUnits->first()->drug;
+            $totalQty = $drugUnits->sum('quantite_actuelle');
+            $avgPrice = $drugUnits->avg('price');
+
+            return [
+                'drug_id'       => $drug->id,
+                'drug_name'     => $drug->name,
+                'dosage'        => $drug->dosage_med,
+                'category'      => $drug->category?->name,
+                'total_quantity'=> $totalQty,
+                'avg_price'     => round($avgPrice, 2),
+            ];
+        })->values();
+
+        // Get transfer history based on location scope
+        $transferQuery = Transfer::query()
+            ->with(['items', 'performer', 'depot', 'fromPharmacy']);
+
+        if ($scope === 'pharmacy' || ($scope === 'all' && ! $depotId)) {
+            // For pharmacy: show transfers FROM this pharmacy TO depots (sent)
+            // and transfers TO this pharmacy (received) - but transfers are only pharmacy -> depot
+            $pharmacyId = $user->pharmacy_id;
+
+            $sentTransfers = (clone $transferQuery)
+                ->where('from_pharmacy_id', $pharmacyId)
+                ->orderBy('performed_at', 'desc')
+                ->limit(20)
+                ->get()
+                ->map(fn ($t) => [
+                    'id'               => $t->id,
+                    'to_depot_name'    => $t->depot?->name ?? 'Dépôt inconnu',
+                    'item_count'       => $t->items_count ?? $t->items->count(),
+                    'total_quantity'   => $t->items->sum('quantity'),
+                    'performed_at'     => $t->performed_at,
+                    'performer_name'   => $t->performer?->name ?? 'Système',
+                ]);
+
+            // For pharmacy received: transfers to pharmacy depots
+            $pharmacyDepotIds = Depot::where('pharmacy_id', $pharmacyId)->pluck('id');
+            $receivedTransfers = (clone $transferQuery)
+                ->whereIn('to_depot_id', $pharmacyDepotIds)
+                ->orderBy('performed_at', 'desc')
+                ->limit(20)
+                ->get()
+                ->map(fn ($t) => [
+                    'id'                 => $t->id,
+                    'from_pharmacy_name' => $t->fromPharmacy?->name ?? 'Pharmacie inconnue',
+                    'item_count'         => $t->items_count ?? $t->items->count(),
+                    'total_quantity'     => $t->items->sum('quantity'),
+                    'performed_at'       => $t->performed_at,
+                    'performer_name'     => $t->performer?->name ?? 'Système',
+                ]);
+        } elseif ($scope === 'depot' && $depotId) {
+            // For depot: show transfers TO this depot (received)
+            // and transfers FROM this depot (sent) - though transfers are usually pharmacy -> depot
+            $receivedTransfers = (clone $transferQuery)
+                ->where('to_depot_id', $depotId)
+                ->orderBy('performed_at', 'desc')
+                ->limit(20)
+                ->get()
+                ->map(fn ($t) => [
+                    'id'                 => $t->id,
+                    'from_pharmacy_name' => $t->fromPharmacy?->name ?? 'Pharmacie inconnue',
+                    'item_count'         => $t->items_count ?? $t->items->count(),
+                    'total_quantity'     => $t->items->sum('quantity'),
+                    'performed_at'       => $t->performed_at,
+                    'performer_name'     => $t->performer?->name ?? 'Système',
+                ]);
+
+            // Depots typically don't send transfers, but show if any exist
+            $sentTransfers = collect([]);
+        } else {
+            $sentTransfers = collect([]);
+            $receivedTransfers = collect([]);
+        }
+
+        return response()->json([
+            'stock_content' => $stockContent,
+            'transfers'     => [
+                'sent'     => $sentTransfers,
+                'received' => $receivedTransfers,
+            ],
+        ]);
     }
 }

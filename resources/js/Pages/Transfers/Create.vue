@@ -1,7 +1,37 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useForm, Link, router } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
+
+// Toast notification helper
+const showNotification = (message, type = 'success') => {
+    const existing = document.getElementById('toast-notification');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'toast-notification';
+    toast.className = `fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 ${
+        type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+    }`;
+    toast.innerHTML = `
+        <div class="flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                ${type === 'success'
+                    ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>'
+                    : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>'
+                }
+            </svg>
+            <span class="font-medium">${message}</span>
+        </div>
+    `;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-100%)';
+        setTimeout(() => toast.remove(), 300);
+    }, 5000);
+};
 
 const props = defineProps({
     depots: Array,
@@ -18,6 +48,12 @@ const lookupError    = ref('');
 const lookupLoading  = ref(false);
 const quantityInput  = ref(1);
 const pendingUnit    = ref(null);
+const submitCooldown = ref(false);
+
+// Reset cooldown when depot changes
+watch(() => form.depot_id, () => {
+    submitCooldown.value = false;
+});
 
 const lookupUnit = async () => {
     const barcode = String(barcodeInput.value ?? '').trim();
@@ -83,12 +119,38 @@ const removeItem = (index) => { cartItems.value.splice(index, 1); };
 const clearAll   = () => { cartItems.value = []; pendingUnit.value = null; };
 
 const submit = () => {
+    if (submitCooldown.value) return;
+
     form.items = cartItems.value.map(i => ({
         drug_unit_id: i.drug_unit_id,
         quantity:     i.quantity,
     }));
+
+    // Activate cooldown
+    submitCooldown.value = true;
+
     form.post(route('transfers.store'), {
-        onSuccess: () => { cartItems.value = []; barcodeInput.value = ''; },
+        onSuccess: (response) => {
+            cartItems.value = [];
+            barcodeInput.value = '';
+
+            // Show success notification
+            const warnings = response?.props?.warnings;
+            if (warnings && warnings.length > 0) {
+                showNotification(`Transfert réussi avec ${warnings.length} unité(s) périmée(s) marquée(s) à détruire.`, 'success');
+            } else {
+                showNotification('Transfert effectué avec succès !', 'success');
+            }
+
+            // Reset cooldown after 10 seconds
+            setTimeout(() => {
+                submitCooldown.value = false;
+            }, 10000);
+        },
+        onError: () => {
+            // Reset cooldown immediately on error
+            submitCooldown.value = false;
+        },
     });
 };
 
@@ -373,20 +435,34 @@ const fmtDate = (d) => {
                                     <div class="pt-2">
                                         <button
                                             type="submit"
-                                            class="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 border border-transparent rounded-lg font-semibold text-sm text-white shadow-md hover:shadow-lg hover:from-green-700 hover:to-green-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            :disabled="form.processing || !form.depot_id || cartItems.length === 0"
+                                            class="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 border border-transparent rounded-lg font-semibold text-sm text-white shadow-md hover:shadow-lg hover:from-green-700 hover:to-green-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden"
+                                            :disabled="form.processing || !form.depot_id || cartItems.length === 0 || submitCooldown"
                                         >
+                                            <!-- Cooldown overlay -->
+                                            <div
+                                                v-if="submitCooldown"
+                                                class="absolute inset-0 bg-gray-500/30 flex items-center justify-center"
+                                            >
+                                                <span class="text-xs font-medium">Attendez 10s...</span>
+                                            </div>
                                             <span class="flex items-center justify-center gap-2">
-                                                <svg v-if="!form.processing" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <svg v-if="!form.processing && !submitCooldown" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                                                 </svg>
-                                                <svg v-else class="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                                                <svg v-else-if="form.processing" class="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
                                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                                                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
                                                 </svg>
-                                                {{ form.processing ? 'Transfert en cours...' : 'Valider le Transfert' }}
+                                                <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                                </svg>
+                                                {{ form.processing ? 'Transfert en cours...' : (submitCooldown ? 'Rechargement...' : 'Valider le Transfert') }}
                                             </span>
                                         </button>
+                                        <p v-if="submitCooldown" class="mt-2 text-xs text-center text-orange-600">
+                                            Bouton grisé pendant 10s pour éviter les doubles validations.
+                                            <br>Changer de dépôt pour réinitialiser.
+                                        </p>
                                     </div>
                                 </div>
                             </div>
