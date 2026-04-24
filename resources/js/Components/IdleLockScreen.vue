@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import axios from 'axios';
 
 const props = defineProps({
@@ -105,6 +105,185 @@ const onKeydown = (e) => {
     if (locked.value && e.key === 'Enter') unlock();
 };
 
+// ── Anti-DOM Tampering Protection ────────────────────────────────────────────
+let domCheckInterval = null;
+let mutationObserver = null;
+const LOCK_CHECK_INTERVAL = 500; // Check every 500ms
+
+// Block all user interactions when locked (prevents interaction with app behind lock screen)
+const blockEventsWhenLocked = (e) => {
+    if (locked.value) {
+        // Only allow events within the lock screen modal itself
+        const isInsideLockScreen = e.target?.closest?.('[data-lock-screen]') ||
+                                   e.composedPath?.().some(el => el?.hasAttribute?.('data-lock-screen'));
+        if (!isInsideLockScreen) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            return false;
+        }
+    }
+};
+
+// Aggressive event blocking when locked
+const BLOCKED_EVENTS = ['click', 'mousedown', 'mouseup', 'keydown', 'keyup', 'keypress',
+                        'touchstart', 'touchend', 'touchmove', 'scroll', 'wheel', 'focus', 'blur'];
+
+// Start aggressive event blocking
+const startEventBlocking = () => {
+    BLOCKED_EVENTS.forEach(event => {
+        window.addEventListener(event, blockEventsWhenLocked, { capture: true, passive: false });
+        document.addEventListener(event, blockEventsWhenLocked, { capture: true, passive: false });
+        document.body?.addEventListener(event, blockEventsWhenLocked, { capture: true, passive: false });
+    });
+};
+
+// Stop event blocking
+const stopEventBlocking = () => {
+    BLOCKED_EVENTS.forEach(event => {
+        window.removeEventListener(event, blockEventsWhenLocked, { capture: true });
+        document.removeEventListener(event, blockEventsWhenLocked, { capture: true });
+        document.body?.removeEventListener(event, blockEventsWhenLocked, { capture: true });
+    });
+};
+
+// Backup blur overlay (created as last resort if main lock screen is removed)
+let backupOverlay = null;
+
+const createBackupOverlay = () => {
+    if (backupOverlay) return;
+    backupOverlay = document.createElement('div');
+    backupOverlay.style.cssText = `
+        position: fixed !important;
+        inset: 0 !important;
+        z-index: 2147483647 !important;
+        background: rgba(0, 0, 0, 0.95) !important;
+        backdrop-filter: blur(20px) !important;
+        -webkit-backdrop-filter: blur(20px) !important;
+        pointer-events: all !important;
+    `;
+    backupOverlay.innerHTML = `
+        <div style="
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            font-family: system-ui, sans-serif;
+        ">
+            <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
+            <h2 style="margin: 0 0 8px 0; font-size: 24px;">Session verrouillée</h2>
+            <p style="margin: 0; opacity: 0.8; font-size: 14px;">Rafraîchissez la page</p>
+        </div>
+    `;
+    document.body.appendChild(backupOverlay);
+};
+
+const removeBackupOverlay = () => {
+    if (backupOverlay && backupOverlay.parentNode) {
+        backupOverlay.parentNode.removeChild(backupOverlay);
+        backupOverlay = null;
+    }
+};
+
+// Apply blur effect to app content (not body, to keep lock screen clear)
+const applyContentBlur = () => {
+    const appContainer = document.querySelector('.app-container');
+    if (appContainer) {
+        appContainer.style.filter = 'blur(8px)';
+        appContainer.style.pointerEvents = 'none';
+    }
+    if (document.body) {
+        document.body.style.overflow = 'hidden';
+    }
+    if (document.documentElement) {
+        document.documentElement.style.overflow = 'hidden';
+    }
+};
+
+const removeContentBlur = () => {
+    const appContainer = document.querySelector('.app-container');
+    if (appContainer) {
+        appContainer.style.filter = '';
+        appContainer.style.pointerEvents = '';
+    }
+    if (document.body) {
+        document.body.style.overflow = '';
+    }
+    if (document.documentElement) {
+        document.documentElement.style.overflow = '';
+    }
+    removeBackupOverlay();
+};
+
+// Watch for DOM tampering attempts
+const startDomProtection = () => {
+    // Periodic check every 500ms
+    domCheckInterval = setInterval(() => {
+        // Check localStorage vs current state
+        const shouldBeLocked = checkPersistedLock();
+
+        if (shouldBeLocked && !locked.value) {
+            // Someone cleared the reactive state but localStorage says locked
+            console.warn('[Security] Lock state restored from localStorage');
+            locked.value = true;
+        }
+
+        // If locked but no visible lock screen element, something is wrong
+        if (locked.value) {
+            startEventBlocking();
+            applyContentBlur();
+
+            // If lock screen element is missing, create backup overlay
+            const hasLockScreen = document.querySelector('[data-lock-screen]');
+            if (!hasLockScreen && checkPersistedLock()) {
+                console.warn('[Security] Lock screen removed! Activating backup overlay...');
+                createBackupOverlay();
+            }
+        } else {
+            stopEventBlocking();
+            removeContentBlur();
+        }
+    }, LOCK_CHECK_INTERVAL);
+
+    // MutationObserver to detect if someone tries to remove elements
+    if (typeof MutationObserver !== 'undefined') {
+        mutationObserver = new MutationObserver((mutations) => {
+            if (!locked.value) return;
+
+            for (const mutation of mutations) {
+                // Check if nodes were removed
+                if (mutation.type === 'childList' && mutation.removedNodes.length > 0) {
+                    // Check if lock screen might have been affected
+                    const hasLockScreen = document.querySelector('[data-lock-screen]');
+                    if (!hasLockScreen && checkPersistedLock()) {
+                        console.warn('[Security] Lock screen element missing, re-locking + backup...');
+                        createBackupOverlay();
+                        locked.value = false; // Force re-render
+                        setTimeout(() => locked.value = true, 10);
+                    }
+                }
+            }
+        });
+
+        // Observe the entire document
+        mutationObserver.observe(document.documentElement, {
+            childList: true,
+            subtree: true
+        });
+    }
+};
+
+const stopDomProtection = () => {
+    clearInterval(domCheckInterval);
+    if (mutationObserver) {
+        mutationObserver.disconnect();
+    }
+    stopEventBlocking();
+    removeContentBlur();
+};
+
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 onMounted(() => {
     // Check if session was locked before refresh
@@ -115,12 +294,25 @@ onMounted(() => {
     EVENTS.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
     window.addEventListener('keydown', onKeydown);
     resetTimer();
+
+    // Start DOM protection
+    startDomProtection();
 });
 
 onUnmounted(() => {
     EVENTS.forEach(e => window.removeEventListener(e, resetTimer));
     window.removeEventListener('keydown', onKeydown);
     clearTimeout(idleTimer);
+    stopDomProtection();
+});
+
+// Watch locked state changes
+watch(locked, (isLocked) => {
+    if (isLocked) {
+        startEventBlocking();
+    } else {
+        stopEventBlocking();
+    }
 });
 
 // Handle page visibility change (tab switch/refresh)
@@ -155,6 +347,7 @@ if (typeof document !== 'undefined') {
             leave-to-class="opacity-0"
         >
             <div v-if="locked"
+                data-lock-screen
                 class="fixed inset-0 z-[9999] flex items-center justify-center bg-gray-900/80 backdrop-blur-sm"
                 @click.self="() => {}"
             >

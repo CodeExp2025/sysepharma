@@ -687,7 +687,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Idle lock screen — mounts once, listens to all activity events -->
-    <IdleLockScreen :user="user" :timeout-mins="15" />
+    <IdleLockScreen :user="user" :timeout-mins="10" />
 </template>
 
 <style scoped>
