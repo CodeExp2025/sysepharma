@@ -13,6 +13,7 @@ class DisbursementController extends Controller
     {
         $user         = $request->user();
         $isSuperAdmin = $user->hasRole('super_admin');
+        $isPharmacyAdmin = $user->hasRole('pharmacy_admin');
         $search       = $request->query('search');
         $sort         = $request->query('sort', 'performed_at');
         $direction    = strtolower((string) $request->query('direction', 'desc')) === 'asc' ? 'asc' : 'desc';
@@ -25,6 +26,10 @@ class DisbursementController extends Controller
         }
 
         $query = Disbursement::with(['initiator', 'items'])
+            // Staff roles (depot_staff, pharmacy_staff) can only see their own disbursements
+            ->when(! $isSuperAdmin && ! $isPharmacyAdmin, function ($q) use ($user) {
+                $q->where('initiated_by', $user->id);
+            })
             ->when($search, function ($q) use ($search) {
                 $q->where(function ($inner) use ($search) {
                     $inner->whereHas('initiator', fn ($u) => $u->whereRaw('name COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]))
@@ -98,8 +103,17 @@ class DisbursementController extends Controller
             ->with('success', 'Décaissement enregistré avec succès.');
     }
 
-    public function show(Disbursement $disbursement)
+    public function show(Request $request, Disbursement $disbursement)
     {
+        $user = $request->user();
+        $isSuperAdmin = $user->hasRole('super_admin');
+        $isPharmacyAdmin = $user->hasRole('pharmacy_admin');
+
+        // Staff roles can only view their own disbursements
+        if (! $isSuperAdmin && ! $isPharmacyAdmin && $disbursement->initiated_by !== $user->id) {
+            abort(403, 'Vous ne pouvez voir que vos propres décaissements.');
+        }
+
         $disbursement->load('initiator', 'items');
 
         return Inertia::render('Disbursements/Show', [
@@ -110,8 +124,12 @@ class DisbursementController extends Controller
     public function destroy(Disbursement $disbursement, Request $request)
     {
         $user = $request->user();
-        if (! $user->hasAnyRole(['super_admin', 'pharmacy_admin'])) {
-            abort(403);
+        $isSuperAdmin = $user->hasRole('super_admin');
+        $isPharmacyAdmin = $user->hasRole('pharmacy_admin');
+
+        // Staff roles can only delete their own disbursements
+        if (! $isSuperAdmin && ! $isPharmacyAdmin && $disbursement->initiated_by !== $user->id) {
+            abort(403, 'Vous ne pouvez supprimer que vos propres décaissements.');
         }
 
         $disbursement->delete();

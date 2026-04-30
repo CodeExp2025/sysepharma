@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Depot;
+use App\Models\Disbursement;
 use App\Models\Drug;
 use App\Models\DrugUnit;
 use App\Models\Sale;
@@ -98,6 +99,46 @@ class StatsController extends Controller
             ])
             ->groupBy(DB::raw('DATE(s.created_at)'), 's.depot_id', 'dep.name')
             ->orderBy('date', 'desc')
+            ->get();
+
+        // 5b. Daily Disbursements by Depot
+        $dailyDisbursements = DB::table('disbursements as d')
+            ->join('users as u', 'u.id', '=', 'd.initiated_by')
+            ->leftJoin('depots as dep', 'dep.id', '=', 'u.depot_id')
+            ->join('disbursement_items as di', 'di.disbursement_id', '=', 'd.id')
+            ->where(function ($q) use ($validDepotIds, $pharmacyId) {
+                $q->whereIn('dep.id', $validDepotIds)
+                  ->orWhere(function ($q2) use ($pharmacyId) {
+                      $q2->whereNull('dep.id')->where('u.pharmacy_id', $pharmacyId);
+                  });
+            })
+            ->whereBetween('d.performed_at', [$from, $to])
+            ->select([
+                DB::raw('DATE(d.performed_at) as date'),
+                DB::raw('COALESCE(dep.id, 0) as depot_id'),
+                DB::raw('COALESCE(dep.name, "Sans dépôt") as depot_name'),
+                DB::raw('SUM(di.quantite * di.prix_unitaire) as disbursement_total'),
+                DB::raw('COUNT(DISTINCT d.id) as disbursement_count'),
+            ])
+            ->groupBy(DB::raw('DATE(d.performed_at)'), DB::raw('COALESCE(dep.id, 0)'), DB::raw('COALESCE(dep.name, "Sans dépôt")'))
+            ->orderBy('date', 'desc')
+            ->get();
+
+        // 5c. Top Disbursers (who disburses the most)
+        $topDisbursers = DB::table('disbursements as d')
+            ->join('users as u', 'u.id', '=', 'd.initiated_by')
+            ->join('disbursement_items as di', 'di.disbursement_id', '=', 'd.id')
+            ->whereBetween('d.performed_at', [$from, $to])
+            ->where('u.pharmacy_id', $pharmacyId)
+            ->select([
+                'u.id as user_id',
+                'u.name as user_name',
+                DB::raw('SUM(di.quantite * di.prix_unitaire) as total_disbursed'),
+                DB::raw('COUNT(DISTINCT d.id) as disbursement_count'),
+            ])
+            ->groupBy('u.id', 'u.name')
+            ->orderBy('total_disbursed', 'desc')
+            ->limit(10)
             ->get();
 
         // 6. Top Selling Drugs
@@ -196,28 +237,33 @@ class StatsController extends Controller
 
         // 10. Totals calculation
         $totals = [
-            'revenue'        => $dailyRevenue->sum('revenue'),
-            'sales_count'    => $dailyRevenue->sum('sales_count'),
-            'stock_units'    => $stockByDrug->sum('units_count'),
-            'stock_qty'      => $stockByDrug->sum('qty_total'),
-            'near_expiry'    => $nearExpiry->count(),
-            'transfers'      => $transferStats->count(),
-            'transfer_items' => $transferStats->sum('items_count'),
+            'revenue'             => $dailyRevenue->sum('revenue'),
+            'disbursements'       => $dailyDisbursements->sum('disbursement_total'),
+            'net_revenue'         => $dailyRevenue->sum('revenue') - $dailyDisbursements->sum('disbursement_total'),
+            'sales_count'         => $dailyRevenue->sum('sales_count'),
+            'disbursement_count'  => $dailyDisbursements->sum('disbursement_count'),
+            'stock_units'         => $stockByDrug->sum('units_count'),
+            'stock_qty'           => $stockByDrug->sum('qty_total'),
+            'near_expiry'         => $nearExpiry->count(),
+            'transfers'           => $transferStats->count(),
+            'transfer_items'      => $transferStats->sum('items_count'),
         ];
 
         return Inertia::render('Stats/Index', [
-            'pharmacy'      => $user->pharmacy,
-            'depots'        => $depots,
-            'stockByDrug'   => $stockByDrug,
-            'stockPerDepot' => $stockPerDepot,
-            'dailyRevenue'  => $dailyRevenue,
-            'topDrugs'      => $topDrugs,
-            'topSellers'    => $topSellers,
-            'nearExpiry'    => $nearExpiry,
-            'transferStats' => $transferStats,
-            'transferQtys'  => $transferQtys,
-            'totals'        => $totals,
-            'filters'       => ['from' => $fromRaw, 'to' => $toRaw],
+            'pharmacy'            => $user->pharmacy,
+            'depots'              => $depots,
+            'stockByDrug'         => $stockByDrug,
+            'stockPerDepot'       => $stockPerDepot,
+            'dailyRevenue'        => $dailyRevenue,
+            'dailyDisbursements'  => $dailyDisbursements,
+            'topDrugs'            => $topDrugs,
+            'topSellers'          => $topSellers,
+            'topDisbursers'       => $topDisbursers,
+            'nearExpiry'          => $nearExpiry,
+            'transferStats'       => $transferStats,
+            'transferQtys'        => $transferQtys,
+            'totals'              => $totals,
+            'filters'             => ['from' => $fromRaw, 'to' => $toRaw],
         ]);
     }
 }

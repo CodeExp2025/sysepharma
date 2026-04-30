@@ -4,12 +4,8 @@ import { useForm, Link } from '@inertiajs/vue3';
 
 defineProps({
     categories: Array,
+    drugForms: Array,
 });
-
-const formTypes = [
-    'Comprimé', 'Gélule', 'Sirop', 'Solution injectable',
-    'Pommade', 'Crème', 'Suppositoire', 'Collyre', 'Autre',
-];
 
 const emptyDrug = () => ({
     name: '',
@@ -132,7 +128,7 @@ const submit = () => {
                                     class="block w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 >
                                     <option value="">Sélectionner une forme</option>
-                                    <option v-for="type in formTypes" :key="type" :value="type">{{ type }}</option>
+                                    <option v-for="form in drugForms" :key="form" :value="form">{{ form }}</option>
                                 </select>
                             </div>
 

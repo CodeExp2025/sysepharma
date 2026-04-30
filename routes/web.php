@@ -17,6 +17,8 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SessionLockController;
 use App\Http\Controllers\StatsController;
 use App\Http\Controllers\DisbursementController;
+use App\Http\Controllers\DrugFormController;
+use App\Http\Controllers\AnnouncementController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -133,15 +135,33 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Statistics
     Route::get('stats', [StatsController::class, 'index'])->middleware('permission:view_reports')->name('stats.index');
 
-    Route::get('disbursements', [DisbursementController::class, 'index'])->middleware('role:super_admin|pharmacy_admin')->name('disbursements.index');
-    Route::get('disbursements/create', [DisbursementController::class, 'create'])->middleware('role:super_admin|pharmacy_admin')->name('disbursements.create');
-    Route::post('disbursements', [DisbursementController::class, 'store'])->middleware('role:super_admin|pharmacy_admin')->name('disbursements.store');
-    Route::get('disbursements/{disbursement}', [DisbursementController::class, 'show'])->middleware('role:super_admin|pharmacy_admin')->name('disbursements.show');
-    Route::delete('disbursements/{disbursement}', [DisbursementController::class, 'destroy'])->middleware('role:super_admin|pharmacy_admin')->name('disbursements.destroy');
+    Route::get('disbursements', [DisbursementController::class, 'index'])->middleware('role:super_admin|pharmacy_admin|pharmacy_staff|depot_staff')->name('disbursements.index');
+    Route::get('disbursements/create', [DisbursementController::class, 'create'])->middleware('role:super_admin|pharmacy_admin|pharmacy_staff|depot_staff')->name('disbursements.create');
+    Route::post('disbursements', [DisbursementController::class, 'store'])->middleware('role:super_admin|pharmacy_admin|pharmacy_staff|depot_staff')->name('disbursements.store');
+    Route::get('disbursements/{disbursement}', [DisbursementController::class, 'show'])->middleware('role:super_admin|pharmacy_admin|pharmacy_staff|depot_staff')->name('disbursements.show');
+    Route::delete('disbursements/{disbursement}', [DisbursementController::class, 'destroy'])->middleware('role:super_admin|pharmacy_admin|pharmacy_staff|depot_staff')->name('disbursements.destroy');
 
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::post('notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
     Route::get('notifications/{notificationId}/go', [NotificationController::class, 'go'])->name('notifications.go');
+
+    // Drug Forms - accessible to pharmacy roles
+    Route::get('drug-forms', [DrugFormController::class, 'index'])->middleware('role:super_admin|pharmacy_admin|pharmacy_staff')->name('drug-forms.index');
+    Route::get('drug-forms/create', [DrugFormController::class, 'create'])->middleware('role:super_admin|pharmacy_admin|pharmacy_staff')->name('drug-forms.create');
+    Route::post('drug-forms', [DrugFormController::class, 'store'])->middleware('role:super_admin|pharmacy_admin|pharmacy_staff')->name('drug-forms.store');
+    Route::get('drug-forms/{drugForm}/edit', [DrugFormController::class, 'edit'])->middleware('role:super_admin|pharmacy_admin|pharmacy_staff')->name('drug-forms.edit');
+    Route::put('drug-forms/{drugForm}', [DrugFormController::class, 'update'])->middleware('role:super_admin|pharmacy_admin|pharmacy_staff')->name('drug-forms.update');
+    Route::delete('drug-forms/{drugForm}', [DrugFormController::class, 'destroy'])->middleware('role:super_admin|pharmacy_admin|pharmacy_staff')->name('drug-forms.destroy');
+    Route::get('drug-forms-list', [DrugFormController::class, 'list'])->name('drug-forms.list');
+
+    // Announcements - accessible to pharmacists and super admin
+    Route::get('announcements', [AnnouncementController::class, 'index'])->middleware('role:super_admin|pharmacy_admin|pharmacy_staff')->name('announcements.index');
+    Route::get('announcements/create', [AnnouncementController::class, 'create'])->middleware('role:super_admin|pharmacy_admin')->name('announcements.create');
+    Route::post('announcements', [AnnouncementController::class, 'store'])->middleware('role:super_admin|pharmacy_admin')->name('announcements.store');
+    Route::get('announcements/{announcement}/edit', [AnnouncementController::class, 'edit'])->middleware('role:super_admin|pharmacy_admin')->name('announcements.edit');
+    Route::put('announcements/{announcement}', [AnnouncementController::class, 'update'])->middleware('role:super_admin|pharmacy_admin')->name('announcements.update');
+    Route::delete('announcements/{announcement}', [AnnouncementController::class, 'destroy'])->middleware('role:super_admin|pharmacy_admin')->name('announcements.destroy');
+    Route::get('announcements/active', [AnnouncementController::class, 'active'])->name('announcements.active');
 
     // Profile Routes (Breeze)
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Disbursement;
 use App\Models\DrugUnit;
 use App\Models\Sale;
 use App\Models\User;
@@ -46,6 +47,52 @@ class SaleController extends Controller
 
         // Group into transactions (one receipt = one transaction_id)
         $allSales    = $salesQuery->get();
+
+        // Fetch disbursements for the same scope/period
+        $disbursementsQuery = Disbursement::with(['initiator', 'items'])
+            ->when(! $isSuperAdmin && $user->pharmacy_id, function ($q) use ($user) {
+                // Filter by pharmacy through user's depot relationship
+                $q->whereHas('initiator', fn ($iq) => $iq->where('pharmacy_id', $user->pharmacy_id));
+            })
+            ->when($user->depot_id, fn ($q) => $q->whereHas('initiator', fn ($iq) => $iq->where('depot_id', $user->depot_id)))
+            ->when($search, function ($q) use ($search) {
+                $q->where(function ($inner) use ($search) {
+                    $inner->whereHas('initiator', fn ($u) => $u->whereRaw('name COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]))
+                          ->orWhereHas('items', fn ($i) => $i->whereRaw('designation COLLATE utf8mb4_general_ci LIKE ?', ["%{$search}%"]));
+                });
+            })
+            ->latest('performed_at');
+
+        $allDisbursements = $disbursementsQuery->get();
+        $disbursementTransactions = $allDisbursements
+            ->map(function ($d) {
+                $total = $d->items->sum(fn ($i) => $i->quantite * $i->prix_unitaire);
+                return [
+                    'id'           => $d->id,
+                    'uuid'         => $d->uuid,
+                    'performed_at' => $d->performed_at,
+                    'initiator'    => $d->initiator,
+                    'items'        => $d->items,
+                    'total'        => $total,
+                    'items_count'  => $d->items->count(),
+                    'notes'        => $d->notes,
+                    'type'         => 'disbursement',
+                ];
+            })
+            ->values();
+
+        // Calculate disbursement statistics
+        $disbursementStats = [
+            'total' => $disbursementTransactions->sum('total'),
+            'count' => $disbursementTransactions->count(),
+        ];
+
+        // Today disbursements
+        $today = now()->startOfDay();
+        $todayDisbursements = $disbursementTransactions->filter(fn ($d) => $d['performed_at'] >= $today);
+        $disbursementStats['today_total'] = $todayDisbursements->sum('total');
+        $disbursementStats['today_count'] = $todayDisbursements->count();
+
         $transactions = $allSales
             ->groupBy(fn ($s) => $s->transaction_id ?? 'solo_' . $s->id)
             ->map(function ($items) {
@@ -76,10 +123,24 @@ class SaleController extends Controller
             ['path' => $request->url(), 'query' => $request->query()]
         );
 
+        // Paginate disbursements separately
+        $perPageDisp = 15;
+        $pageDisp    = $request->input('disbursement_page', 1);
+        $pagedDisbursements = new \Illuminate\Pagination\LengthAwarePaginator(
+            $disbursementTransactions->forPage($pageDisp, $perPageDisp),
+            $disbursementTransactions->count(),
+            $perPageDisp,
+            $pageDisp,
+            ['path' => $request->url(), 'query' => array_merge($request->query(), ['disbursement_page' => $pageDisp])]
+        );
+        $pagedDisbursements->setPageName('disbursement_page');
+
         return Inertia::render('Sales/Index', [
-            'transactions'  => $paged,
-            'userDepotStat' => $userDepotStat,
-            'filters'       => ['search' => $search],
+            'transactions'      => $paged,
+            'disbursements'     => $pagedDisbursements,
+            'disbursementStats' => $disbursementStats,
+            'userDepotStat'     => $userDepotStat,
+            'filters'           => ['search' => $search],
         ]);
     }
 

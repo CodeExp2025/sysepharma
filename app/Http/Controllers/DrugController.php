@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\Drug;
+use App\Models\DrugForm;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
@@ -56,6 +57,7 @@ class DrugController extends Controller
     {
         return Inertia::render('Drugs/Create', [
             'categories' => Category::all(),
+            'drugForms' => DrugForm::active()->orderBy('name')->pluck('name'),
         ]);
     }
 
@@ -124,6 +126,7 @@ class DrugController extends Controller
         return Inertia::render('Drugs/Edit', [
             'drug' => $drug,
             'categories' => Category::all(),
+            'drugForms' => DrugForm::active()->orderBy('name')->pluck('name'),
         ]);
     }
 
